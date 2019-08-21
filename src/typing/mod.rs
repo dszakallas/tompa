@@ -4,7 +4,6 @@ use std::error::Error;
 use std::fmt::Formatter;
 use std::fmt::Display;
 use std::fmt;
-use std::collections::HashSet;
 
 use im_rc;
 

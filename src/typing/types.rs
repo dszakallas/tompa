@@ -95,7 +95,7 @@ mod tests {
     }
 }
 
-fn limits_bound_rule(syntax: &Limits, rule: LimitsBoundRule, context: &Context) -> Result<(), TypeError> {
+fn limits_bound_rule(syntax: &Limits, rule: LimitsBoundRule, _context: &Context) -> Result<(), TypeError> {
     if syntax.min <= rule.bound && syntax.max.map_or(true, |max| syntax.min <= max && max <= rule.bound) {
         Ok(())
     } else {

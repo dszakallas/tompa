@@ -2,7 +2,6 @@ use super::*;
 
 use crate::syntax::types::*;
 use crate::syntax::instructions::*;
-use std::collections::HashSet;
 
 use std::ops::Add;
 use std::iter::FromIterator;

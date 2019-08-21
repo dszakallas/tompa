@@ -19,18 +19,18 @@ pub struct FuncType {
     pub results: Vec<ValType>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct TableType {
     pub limits: Limits,
     pub elemtype: FuncRef,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MemType {
     pub limits: Limits,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Limits {
     pub min: u64,
     pub max: Option<u64>,
@@ -39,7 +39,7 @@ pub struct Limits {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Mut { Var, Const }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct GlobalType {
     pub mut_: Mut,
     pub valtype: ValType,
@@ -48,13 +48,13 @@ pub struct GlobalType {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExternFuncType(pub FuncType);
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ExternMemType(pub MemType);
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ExternTableType(pub TableType);
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ExternGlobalType(pub GlobalType);
 
 #[derive(Clone, Debug, PartialEq)]

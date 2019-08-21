@@ -1,6 +1,6 @@
 use super::types::*;
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Const {
     I32(i32),
     I64(i64),
@@ -50,7 +50,7 @@ pub struct MemoryGrow {}
 
 pub struct Nop {}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Instruction {
     Const(Const),
 //    Load(Load),
@@ -71,7 +71,7 @@ pub struct Block {
 //    pub else_instr: Vec<Instruction>,
 //}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
     pub instr: Vec<Instruction>,
 }
