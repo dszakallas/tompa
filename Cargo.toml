@@ -1,0 +1,13 @@
+[package]
+name = "tompa"
+version = "0.1.0"
+authors = ["Dávid Szakállas <david.szakallas@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+#[bin]
+#proc-macro = true
+
+[dependencies]
+im-rc = "13.0.0"
