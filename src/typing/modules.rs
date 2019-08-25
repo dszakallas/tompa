@@ -6,7 +6,8 @@ use crate::syntax::instructions::*;
 use crate::syntax::modules::*;
 use im_rc;
 
-use std::ops::Add;
+use std::ops::{Add, DerefMut};
+use std::collections::HashSet;
 
 #[cfg(test)]
 mod tests {
@@ -86,6 +87,156 @@ mod tests {
             &Context::empty()
         ).unwrap();
     }
+
+    #[test]
+    fn test_element_segment_rule() {
+        ElementSegmentRule {}.check(
+            &ElementSegment {
+                table: 0,
+                offset: Expr { instr: vec![Instruction::Const(Const::I32(256))] },
+                init: vec![0]
+            },
+            &Context {
+                types: im_rc::vector![],
+                funcs: im_rc::vector![FuncType { parameters: vec![], results: vec![ValType::I32] }],
+                tables: im_rc::vector![],
+                mems: im_rc::vector![],
+                globals: im_rc::vector![],
+                labels: im_rc::vector![],
+                locals: im_rc::vector![],
+                ret: None
+            }
+        ).unwrap_err();
+        ElementSegmentRule {}.check(
+            &ElementSegment {
+                table: 0,
+                offset: Expr { instr: vec![Instruction::Const(Const::I32(256))] },
+                init: vec![0]
+            },
+            &Context {
+                types: im_rc::vector![],
+                funcs: im_rc::vector![],
+                tables: im_rc::vector![TableType { limits: Limits { min: 0, max: None}, elemtype: FuncRef {} }],
+                mems: im_rc::vector![],
+                globals: im_rc::vector![],
+                labels: im_rc::vector![],
+                locals: im_rc::vector![],
+                ret: None
+            }
+        ).unwrap_err();
+
+        ElementSegmentRule {}.check(
+            &ElementSegment {
+                table: 0,
+                offset: Expr { instr: vec![Instruction::Const(Const::I32(256))] },
+                init: vec![0]
+            },
+            &Context {
+                types: im_rc::vector![],
+                funcs: im_rc::vector![FuncType { parameters: vec![], results: vec![ValType::I32] }],
+                tables: im_rc::vector![TableType { limits: Limits { min: 0, max: None}, elemtype: FuncRef {} }],
+                mems: im_rc::vector![],
+                globals: im_rc::vector![],
+                labels: im_rc::vector![],
+                locals: im_rc::vector![],
+                ret: None
+            }
+        ).unwrap();
+    }
+
+    #[test]
+    fn test_data_segment_rule() {
+        DataSegmentRule {}.check(
+            &DataSegment {
+                data: 0,
+                offset: Expr { instr: vec![Instruction::Const(Const::I32(256))] },
+                init: vec![0]
+            },
+            &Context {
+                types: im_rc::vector![],
+                funcs: im_rc::vector![],
+                tables: im_rc::vector![],
+                mems: im_rc::vector![],
+                globals: im_rc::vector![],
+                labels: im_rc::vector![],
+                locals: im_rc::vector![],
+                ret: None
+            }
+        ).unwrap_err();
+
+        DataSegmentRule {}.check(
+            &DataSegment {
+                data: 0,
+                offset: Expr { instr: vec![Instruction::Const(Const::I32(256))] },
+                init: vec![0]
+            },
+            &Context {
+                types: im_rc::vector![],
+                funcs: im_rc::vector![],
+                tables: im_rc::vector![],
+                mems: im_rc::vector![MemType { limits: Limits { min: 0, max: None} }],
+                globals: im_rc::vector![],
+                labels: im_rc::vector![],
+                locals: im_rc::vector![],
+                ret: None
+            }
+        ).unwrap();
+    }
+
+    #[test]
+    fn test_start_rule() {
+        StartRule {}.check(
+            &Start(0),
+            &Context {
+                types: im_rc::vector![],
+                funcs: im_rc::vector![FuncType { parameters: vec![], results: vec![ValType::I32] }],
+                tables: im_rc::vector![],
+                mems: im_rc::vector![],
+                globals: im_rc::vector![],
+                labels: im_rc::vector![],
+                locals: im_rc::vector![],
+                ret: None
+            }
+        ).unwrap_err();
+
+        StartRule {}.check(
+            &Start(0),
+            &Context {
+                types: im_rc::vector![],
+                funcs: im_rc::vector![FuncType { parameters: vec![], results: vec![] }],
+                tables: im_rc::vector![],
+                mems: im_rc::vector![],
+                globals: im_rc::vector![],
+                labels: im_rc::vector![],
+                locals: im_rc::vector![],
+                ret: None
+            }
+        ).unwrap();
+    }
+
+    #[test]
+    fn test_export_rule() {
+        let ctx = Context {
+            types: Default::default(),
+            funcs: im_rc::vector![FuncType { parameters: vec![], results: vec![] }],
+            tables: Default::default(),
+            mems: Default::default(),
+            globals: Default::default(),
+            labels: Default::default(),
+            locals: Default::default(),
+            ret: None
+        };
+
+        ExportRule {}.check(
+            &Export { name: "export_1".to_owned(), expr: ExportDesc::Func(ExternFunc(0)) },
+            &ctx
+        ).unwrap();
+
+        ExportRule {}.check(
+            &Export { name: "export_2".to_owned(), expr: ExportDesc::Global(ExternGlobal(0)) },
+            &ctx
+        ).unwrap_err();
+    }
 }
 
 fn check_function_context(tpe_idx: &TypeIdx, locals: &Vec<ValType>, context: &Context) -> Option<(FuncType, Context)> {
@@ -110,53 +261,55 @@ fn check_function_context(tpe_idx: &TypeIdx, locals: &Vec<ValType>, context: &Co
     }))
 }
 
-fn function_rule(syntax: &Function, rule: FunctionRule, context: &Context) -> Result<FuncType, TypeError> {
-    let (tpe, fn_context) = check_function_context(&syntax.type_idx, &syntax.locals, context).ok_or_else(|| type_error!(syntax, rule))?;
+rule!(FunctionRule: Function => FuncType, function_rule);
+
+fn function_rule(syntax: &Function, rule: &FunctionRule, context: &Context) -> WrappedResult<FuncType> {
+    let (tpe, fn_context) = check_function_context(&syntax.type_idx, &syntax.locals, context)?;
     let result = ExprRule { is_const: false }.check(&syntax.body, &fn_context)?;
 
     if tpe.results.get(0) == result.as_ref() {
         Ok(tpe)
     } else {
-        Err(type_error!(syntax, rule))
+        None?
     }
-}
-
-rule!(FunctionRule: Function => FuncType, function_rule);
-
-fn table_rule(syntax: &Table, rule: TableRule, context: &Context) -> Result<TableType, TypeError> {
-    TableTypeRule {}.check(&syntax.tpe, &context)?;
-    Ok(syntax.tpe.clone())
 }
 
 rule!(TableRule: Table => TableType, table_rule);
 
-fn mem_rule(syntax: &Mem, rule: MemRule, context: &Context) -> Result<MemType, TypeError> {
-    MemTypeRule {}.check(&syntax.tpe, &context)?;
+fn table_rule(syntax: &Table, rule: &TableRule, context: &Context) -> WrappedResult<TableType> {
+    TableTypeRule {}.check(&syntax.tpe, &context)?;
     Ok(syntax.tpe.clone())
 }
 
 rule!(MemRule: Mem => MemType, mem_rule);
 
-fn global_rule(syntax: &Global, rule: GlobalRule, context: &Context) -> Result<GlobalType, TypeError> {
+fn mem_rule(syntax: &Mem, rule: &MemRule, context: &Context) -> WrappedResult<MemType> {
+    MemTypeRule {}.check(&syntax.tpe, &context)?;
+    Ok(syntax.tpe.clone())
+}
+
+rule!(GlobalRule: Global => GlobalType, global_rule);
+
+fn global_rule(syntax: &Global, rule: &GlobalRule, context: &Context) -> WrappedResult<GlobalType> {
     GlobalTypeRule {}.check(&syntax.tpe, &context)?;
     let result = ExprRule { is_const: true }.check(&syntax.expr, &context)?;
 
     if result == Some(syntax.tpe.valtype) {
         Ok(syntax.tpe.clone())
     } else {
-        Err(type_error!(syntax, rule))
+        None?
     }
 }
 
-rule!(GlobalRule: Global => GlobalType, global_rule);
+rule!(ElementSegmentRule: ElementSegment => (), element_segment_rule);
 
-fn element_segment_rule(syntax: &ElementSegment, rule: ElementSegmentRule, context: &Context) -> Result<(), TypeError> {
-    let k = context.tables.get(syntax.table as usize).ok_or_else(|| type_error!(syntax, rule))?;
+fn element_segment_rule(syntax: &ElementSegment, rule: &ElementSegmentRule, context: &Context) -> WrappedResult<()> {
+    let k = context.tables.get(syntax.table as usize)?;
 
     TableTypeRule {}.check(k, context)?;
 
     for f in &syntax.init {
-        context.funcs.get(*f as usize).ok_or_else(|| type_error!(syntax, rule))?;
+        context.funcs.get(*f as usize)?;
     }
 
     let res = ExprRule { is_const: true }.check(&syntax.offset, context)?;
@@ -164,14 +317,14 @@ fn element_segment_rule(syntax: &ElementSegment, rule: ElementSegmentRule, conte
     if res == Some(ValType::I32) {
         Ok(())
     } else {
-        Err(type_error!(syntax, rule))
+        None?
     }
 }
 
-rule!(ElementSegmentRule: ElementSegment => (), element_segment_rule);
+rule!(DataSegmentRule: DataSegment => (), data_segment_rule);
 
-fn data_segment_rule(syntax: &DataSegment, rule: DataSegmentRule, context: &Context) -> Result<(), TypeError> {
-    let k = context.mems.get(syntax.data as usize).ok_or_else(|| type_error!(syntax, rule))?;
+fn data_segment_rule(syntax: &DataSegment, rule: &DataSegmentRule, context: &Context) -> WrappedResult<()> {
+    let k = context.mems.get(syntax.data as usize)?;
 
     MemTypeRule {}.check(k, context)?;
 
@@ -180,28 +333,26 @@ fn data_segment_rule(syntax: &DataSegment, rule: DataSegmentRule, context: &Cont
     if res == Some(ValType::I32) {
         Ok(())
     } else {
-        Err(type_error!(syntax, rule))
-    }
-}
-
-rule!(DataSegmentRule: DataSegment => (), data_segment_rule);
-
-fn start_rule(syntax: &Start, rule: StartRule, context: &Context) -> Result<(), TypeError> {
-    let k = context.funcs.get(syntax.0 as usize).ok_or_else(|| type_error!(syntax, rule))?;
-
-    if *k == (FuncType { parameters: vec![], results: vec![] }) {
-        Ok(())
-    } else {
-        Err(type_error!(syntax, rule))
+        None?
     }
 }
 
 rule!(StartRule: Start => (), start_rule);
 
+fn start_rule(syntax: &Start, rule: &StartRule, context: &Context) -> WrappedResult<()> {
+    let k = context.funcs.get(syntax.0 as usize)?;
+
+    if *k == (FuncType { parameters: vec![], results: vec![] }) {
+        Ok(())
+    } else {
+        None?
+    }
+}
+
 macro_rules! derive_export_rule {
     ($rulename:ident: $syntax:ty => $tpe:ident, $prop:ident) => {
-        rule!($rulename: $syntax => $tpe, |syntax: &$syntax, rule: $rulename, context: &Context| {
-            let tpe = context.$prop.get(syntax.0 as usize).ok_or_else(|| type_error!(syntax, rule))?;
+        rule!($rulename: $syntax => $tpe, |syntax: &$syntax, rule: &$rulename, context: &Context| {
+            let tpe = context.$prop.get(syntax.0 as usize)?;
             Ok($tpe(tpe.clone()))
         });
     };
@@ -212,7 +363,9 @@ derive_export_rule!(ExportTableRule: ExternTable => ExternTableType, tables);
 derive_export_rule!(ExportMemRule: ExternMem => ExternMemType, mems);
 derive_export_rule!(ExportGlobalRule: ExternGlobal => ExternGlobalType, globals);
 
-fn export_rule(syntax: &Export, rule: ExportRule, context: &Context) -> Result<ExternType, TypeError> {
+rule!(ExportRule: Export => ExternType, export_rule);
+
+fn export_rule(syntax: &Export, rule: &ExportRule, context: &Context) -> WrappedResult<ExternType> {
     match &syntax.expr {
         ExportDesc::Func(e) => Ok(ExternType::Func(ExportFuncRule {}.check(e, context)?)),
         ExportDesc::Table(e) => Ok(ExternType::Table(ExportTableRule {}.check(e, context)?)),
@@ -221,18 +374,16 @@ fn export_rule(syntax: &Export, rule: ExportRule, context: &Context) -> Result<E
     }
 }
 
-rule!(ExportRule: Export => ExternType, export_rule);
+rule!(ImportFuncRule: ExternFunc => ExternFuncType, import_func_rule);
 
-fn import_func_rule(syntax: &ExternFunc, rule: ImportFuncRule, context: &Context) -> Result<ExternFuncType, TypeError> {
-    let tpe = context.types.get(syntax.0 as usize).ok_or_else(|| type_error!(syntax, rule))?;
+fn import_func_rule(syntax: &ExternFunc, rule: &ImportFuncRule, context: &Context) -> WrappedResult<ExternFuncType> {
+    let tpe = context.types.get(syntax.0 as usize)?;
     Ok(ExternFuncType(tpe.clone()))
 }
 
-rule!(ImportFuncRule: ExternFunc => ExternFuncType, import_func_rule);
-
 macro_rules! derive_import_rule {
     ($rulename:ident: $syntax:ty => $tpe:ident, $inner:tt) => {
-        rule!($rulename: $syntax => $tpe, |syntax: &$syntax, rule: $rulename, context: &Context| {
+        rule!($rulename: $syntax => $tpe, |syntax: &$syntax, rule: &$rulename, context: &Context| {
             $inner {}.check(syntax, context)?;
             Ok(syntax.clone())
         });
@@ -243,7 +394,9 @@ derive_import_rule!(ImportTableRule: ExternTableType => ExternTableType, ExternT
 derive_import_rule!(ImportMemRule: ExternMemType => ExternMemType, ExternMemTypeRule);
 derive_import_rule!(ImportGlobalRule: ExternGlobalType => ExternGlobalType, ExternGlobalTypeRule);
 
-fn import_rule(syntax: &Import, rule: ImportRule, context: &Context) -> Result<ExternType, TypeError> {
+rule!(ImportRule: Import => ExternType, import_rule);
+
+fn import_rule(syntax: &Import, rule: &ImportRule, context: &Context) -> WrappedResult<ExternType> {
     match &syntax.expr {
         ImportDesc::Func(e) => Ok(ExternType::Func(ImportFuncRule {}.check(e, context)?)),
         ImportDesc::Table(e) => Ok(ExternType::Table(ImportTableRule {}.check(e, context)?)),
@@ -252,9 +405,9 @@ fn import_rule(syntax: &Import, rule: ImportRule, context: &Context) -> Result<E
     }
 }
 
-rule!(ImportRule: Import => ExternType, import_rule);
+rule!(ModuleRule: Module => (Vec<ExternType>, Vec<ExternType>), module_rule);
 
-fn module_rule(syntax: &Module, rule: ModuleRule, _context: &Context) -> Result<(Vec<ExternType>, Vec<ExternType>),TypeError> {
+fn module_rule(syntax: &Module, rule: &ModuleRule, _context: &Context) -> WrappedResult<(Vec<ExternType>, Vec<ExternType>)> {
     let mut ctx = Context::empty();
 
     let mut global_ctx = ctx.clone();
@@ -272,7 +425,10 @@ fn module_rule(syntax: &Module, rule: ModuleRule, _context: &Context) -> Result<
             ExternType::Func(ExternFuncType(ft)) => ctx.types.push_back(ft.clone()),
             ExternType::Mem(ExternMemType(mt)) => ctx.mems.push_back(*mt),
             ExternType::Table(ExternTableType(tt)) => ctx.tables.push_back(*tt),
-            ExternType::Global(ExternGlobalType(gt)) => { ctx.globals.push_back(*gt); global_ctx.globals.push_back(*gt) }
+            ExternType::Global(ExternGlobalType(gt)) => {
+                ctx.globals.push_back(*gt);
+                global_ctx.globals.push_back(*gt)
+            }
         }
         its.push(it);
     }
@@ -290,13 +446,26 @@ fn module_rule(syntax: &Module, rule: ModuleRule, _context: &Context) -> Result<
     }
 
     let mut ets = vec![];
+    let mut et_names = HashSet::new();
     for export in &syntax.exports {
+        if !et_names.contains(&export.name) {
+            et_names.insert(&export.name);
+        } else {
+           None?
+        }
         ets.push(ExportRule {}.check(export, &ctx)?);
     }
 
-    // start, elem, data
+    &syntax.start.map_or(Ok(()), |start| StartRule {}.check(&start, &ctx))?;
 
-    Err(type_error!(syntax, rule))
+    for elem in &syntax.elem {
+        ElementSegmentRule {}.check(elem, &ctx)?;
+    }
+
+    for data in &syntax.data {
+        DataSegmentRule {}.check(data, &ctx)?;
+    }
+
+    Ok((its, ets))
 }
 
-rule!(ModuleRule: Module => (Vec<ExternType>, Vec<ExternType>), module_rule);

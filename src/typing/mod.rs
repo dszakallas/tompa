@@ -6,6 +6,8 @@ use std::fmt::Display;
 use std::fmt;
 
 use im_rc;
+use std::rc::Rc;
+use std::option::NoneError;
 
 #[derive(Debug)]
 pub struct TypeError {
@@ -20,6 +22,25 @@ impl<'a> Display for TypeError {
 }
 
 impl Error for TypeError {}
+
+struct TypeErrorWrapper {
+    inner: Option<TypeError>
+}
+
+impl From<NoneError> for TypeErrorWrapper {
+    fn from(_: NoneError) -> Self {
+        TypeErrorWrapper { inner: None }
+    }
+}
+
+impl From<TypeError> for TypeErrorWrapper {
+    fn from(err: TypeError) -> Self {
+        TypeErrorWrapper { inner: Some(err) }
+    }
+}
+
+type WrappedResult<A> = Result<A, TypeErrorWrapper>;
+
 
 #[derive(Clone, Debug)]
 pub struct Context {
@@ -49,7 +70,7 @@ impl Context {
 }
 
 pub trait Type<S, T> {
-    fn check(self, syntax: &S, context: &Context) -> Result<T, TypeError>;
+    fn check(&self, syntax: &S, context: &Context) -> Result<T, TypeError>;
 }
 
 macro_rules! rule {
@@ -67,8 +88,10 @@ macro_rules! rule {
         }
 
         impl Type<$syntax, $tpe> for $rulename {
-            fn check(self, syntax: &$syntax, context: &Context) -> Result<$tpe, TypeError> {
-                $check(syntax, self, context)
+            fn check(&self, syntax: &$syntax, context: &Context) -> Result<$tpe, TypeError> {
+                $check(syntax, self, context).map_err(|e: TypeErrorWrapper| {
+                    e.inner.unwrap_or_else(move || type_error!(syntax, self))
+                })
             }
         }
     };
@@ -77,6 +100,15 @@ macro_rules! rule {
 macro_rules! type_error {
     ($syntax:expr, $rule: expr) => {
         TypeError { rule: format!("{:?}", $rule), syntax: format!("{:?}", $syntax) }
+    }
+}
+
+macro_rules! some_if{
+    ($condition:expr, $some:expr) => {
+        match $condition {
+            true => Some($some),
+            _ => None,
+        }
     }
 }
 

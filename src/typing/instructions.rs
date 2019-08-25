@@ -61,40 +61,40 @@ mod tests {
     }
 }
 
-fn expr_rule(syntax: &Expr, rule: ExprRule, context: &Context) -> Result<Option<ValType>, TypeError> {
-    check_expr(&syntax.instr, rule.is_const, context, || type_error!(syntax, rule))
-}
-
 rule!(ExprRule { is_const: bool }: Expr => Option<ValType>, expr_rule);
 
+fn expr_rule(syntax: &Expr, rule: &ExprRule, context: &Context) -> WrappedResult<Option<ValType>> {
+    let res = check_expr(&syntax.instr, rule.is_const, context)?;
+    Ok(res)
+}
 
-fn block_rule(syntax: &Block, rule: BlockRule, context: &Context) -> Result<FuncType, TypeError> {
+
+rule!(BlockRule: Block => FuncType, block_rule);
+
+fn block_rule(syntax: &Block, rule: &BlockRule, context: &Context) -> WrappedResult<FuncType> {
     let block_context = check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax, rule))?;
-    let result = check_expr(&syntax.instr, false, context, || type_error!(syntax, rule))?;
+    let result = check_expr(&syntax.instr, false, context)?;
 
     if result == syntax.result {
         Ok(FuncType { parameters: vec![], results: Vec::from_iter(result.into_iter()) })
     } else {
-        Err(type_error!(syntax, rule))
+        None?
     }
-}
-
-rule!(BlockRule: Block => FuncType, block_rule);
-
-fn instruction_seq_rule(syntax: &Vec<Instruction>, rule: InstructionSeqRule, context: &Context) -> Result<FuncType, TypeError> {
-    let end_stack = check_instruction_seq(syntax, rule.start_stack.clone(), rule.is_const).ok_or_else(|| type_error!(syntax, rule))?;
-    Ok(FuncType { parameters: rule.start_stack, results: end_stack })
 }
 
 rule!(InstructionSeqRule { start_stack: Vec<ValType>, is_const: bool }: Vec<Instruction> => FuncType, instruction_seq_rule);
 
-fn check_expr<F: Fn() -> TypeError>(instr: &Vec<Instruction>, is_const: bool, context: &Context, err: F) -> Result<Option<ValType>, TypeError> {
-    let seq = InstructionSeqRule { start_stack: vec![], is_const }.check(instr, &context)?;
+fn instruction_seq_rule(syntax: &Vec<Instruction>, rule: &InstructionSeqRule, context: &Context) -> WrappedResult<FuncType> {
+    let end_stack = check_instruction_seq(syntax, rule.start_stack.clone(), rule.is_const)?;
+    Ok(FuncType { parameters: rule.start_stack.clone(), results: end_stack })
+}
 
+fn check_expr(instr: &Vec<Instruction>, is_const: bool, context: &Context) -> WrappedResult<Option<ValType>> {
+    let seq = InstructionSeqRule { start_stack: vec![], is_const }.check(instr, &context)?;
     if seq.results.len() <= 1 {
         Ok(seq.results.get(0).cloned())
     } else {
-        Err(err())
+        None?
     }
 }
 
