@@ -2,10 +2,18 @@
 pub struct FuncRef {}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum ValType { I32, F32, I64, F64 }
+pub enum ValType {
+    I32,
+    F32,
+    I64,
+    F64,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Sx { U, S }
+pub enum Sx {
+    U,
+    S,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MemArg {
@@ -37,7 +45,10 @@ pub struct Limits {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Mut { Var, Const }
+pub enum Mut {
+    Var,
+    Const,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct GlobalType {

@@ -1,13 +1,13 @@
 use crate::syntax::types::*;
 
 use std::error::Error;
-use std::fmt::Formatter;
-use std::fmt::Display;
 use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
 
 use im_rc;
-use std::rc::Rc;
 use std::option::NoneError;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct TypeError {
@@ -17,14 +17,17 @@ pub struct TypeError {
 
 impl<'a> Display for TypeError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_fmt(format_args!("{} does not satisfy {}", self.syntax, self.rule))
+        f.write_fmt(format_args!(
+            "{} does not satisfy {}",
+            self.syntax, self.rule
+        ))
     }
 }
 
 impl Error for TypeError {}
 
 struct TypeErrorWrapper {
-    inner: Option<TypeError>
+    inner: Option<TypeError>,
 }
 
 impl From<NoneError> for TypeErrorWrapper {
@@ -40,7 +43,6 @@ impl From<TypeError> for TypeErrorWrapper {
 }
 
 type WrappedResult<A> = Result<A, TypeErrorWrapper>;
-
 
 #[derive(Clone, Debug)]
 pub struct Context {
@@ -99,17 +101,20 @@ macro_rules! rule {
 
 macro_rules! type_error {
     ($syntax:expr, $rule: expr) => {
-        TypeError { rule: format!("{:?}", $rule), syntax: format!("{:?}", $syntax) }
-    }
+        TypeError {
+            rule: format!("{:?}", $rule),
+            syntax: format!("{:?}", $syntax),
+        }
+    };
 }
 
-macro_rules! some_if{
+macro_rules! some_if {
     ($condition:expr, $some:expr) => {
         match $condition {
             true => Some($some),
             _ => None,
         }
-    }
+    };
 }
 
 mod types;
@@ -117,7 +122,3 @@ mod types;
 mod instructions;
 
 mod modules;
-
-
-
-

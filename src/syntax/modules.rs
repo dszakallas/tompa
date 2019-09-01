@@ -1,5 +1,5 @@
-use super::types::*;
 use super::instructions::*;
+use super::types::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
@@ -10,12 +10,12 @@ pub struct Function {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Table {
-    pub tpe: TableType
+    pub tpe: TableType,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Mem {
-    pub tpe: MemType
+    pub tpe: MemType,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,7 +47,7 @@ pub enum ExportDesc {
     Func(ExternFunc),
     Table(ExternTable),
     Mem(ExternMem),
-    Global(ExternGlobal)
+    Global(ExternGlobal),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -55,7 +55,7 @@ pub enum ImportDesc {
     Func(ExternFunc),
     Table(ExternTableType),
     Mem(ExternMemType),
-    Global(ExternGlobalType)
+    Global(ExternGlobalType),
 }
 
 #[derive(Clone, Debug, PartialEq)]

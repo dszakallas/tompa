@@ -1,8 +1,12 @@
 use super::types::*;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Const { I32(i32), I64(i64), F32(f32), F64(f64), }
-
+pub enum Const {
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+}
 
 pub enum BinOp {}
 
@@ -16,7 +20,6 @@ pub struct Drop {}
 
 pub struct Select {}
 
-
 pub struct LocalGet(u32);
 
 pub struct LocalSet(u32);
@@ -26,8 +29,6 @@ pub struct LocalTee(u32);
 pub struct GlobalGet(u32);
 
 pub struct GlobalSet(u32);
-
-
 
 //#[derive(Clone, Debug)]
 //pub struct Load {
@@ -46,31 +47,36 @@ pub struct GlobalSet(u32);
 pub enum BitWidth {
     _8,
     _16,
-    _32
+    _32,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Load { I32(i32), I64(i64), F32(f32), F64(f64), }
+pub enum Load {
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Store { I32(i32), I64(i64), F32(f32), F64(f64), }
+pub enum Store {
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+}
 
 pub struct MemorySize {}
 
 pub struct MemoryGrow {}
-
-
-
-
-
 
 pub struct Nop {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Instruction {
     Const(Const),
-//    Load(Load),
-//    Store(Store)
+    //    Load(Load),
+    //    Store(Store)
 }
 
 #[derive(Clone, Debug)]
@@ -91,4 +97,3 @@ pub struct Block {
 pub struct Expr {
     pub instr: Vec<Instruction>,
 }
-
