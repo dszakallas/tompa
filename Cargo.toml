@@ -11,3 +11,6 @@ edition = "2018"
 
 [dependencies]
 im-rc = "13.0.0"
+nom = "5.0.1"
+num = "0.2.0"
+

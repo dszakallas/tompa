@@ -1,12 +1,8 @@
 use super::types::*;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Const {
-    I32(i32),
-    I64(i64),
-    F32(f32),
-    F64(f64),
-}
+pub enum Const { I32(i32), I64(i64), F32(f32), F64(f64), }
+
 
 pub enum BinOp {}
 
@@ -20,33 +16,53 @@ pub struct Drop {}
 
 pub struct Select {}
 
-pub struct LocalGet { x: u64 }
 
-pub struct LocalSet { x: u64 }
+pub struct LocalGet(u32);
 
-pub struct LocalTee { x: u64 }
+pub struct LocalSet(u32);
 
-pub struct GlobalGet { x: u64 }
+pub struct LocalTee(u32);
 
-pub struct GlobalSet { x: u64 }
+pub struct GlobalGet(u32);
 
-#[derive(Clone, Debug)]
-pub struct Load {
-    pub t: ValType,
-    pub memarg: MemArg,
-    pub n: Option<(ValType, Sx)>,
+pub struct GlobalSet(u32);
+
+
+
+//#[derive(Clone, Debug)]
+//pub struct Load {
+//    pub t: ValType,
+//    pub memarg: MemArg,
+//    pub n: Option<(ValType, Sx)>,
+//}
+//
+//#[derive(Clone, Debug)]
+//pub struct Store {
+//    pub t: ValType,
+//    pub memarg: MemArg,
+//    pub n: Option<ValType>,
+//}
+
+pub enum BitWidth {
+    _8,
+    _16,
+    _32
 }
 
-#[derive(Clone, Debug)]
-pub struct Store {
-    pub t: ValType,
-    pub memarg: MemArg,
-    pub n: Option<ValType>,
-}
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Load { I32(i32), I64(i64), F32(f32), F64(f64), }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Store { I32(i32), I64(i64), F32(f32), F64(f64), }
 
 pub struct MemorySize {}
 
 pub struct MemoryGrow {}
+
+
+
+
+
 
 pub struct Nop {}
 

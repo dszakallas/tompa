@@ -2,10 +2,10 @@
 #![feature(try_trait)]
 
 extern crate im_rc;
+extern crate nom;
 
 fn main() {}
 
-mod typing;
-
-
+mod parser;
 mod syntax;
+mod typing;
