@@ -699,10 +699,6 @@ fn make_float<Out: LcFloat>(is_neg: bool, exponent: i32, significand: Uxx<Out>) 
         (exponent_part << Out::MANTISSA_SIZE) |
         significand;
 
-    println!("res: {:#018x}", res);
-
-    println!("exp: {:#018x}", 0.0f32.to_bits());
-
     Out::from_bits(
         (sign_part << (Out::BITS as i32 - 1)) |
             (exponent_part << Out::MANTISSA_SIZE) |
