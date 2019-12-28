@@ -13,4 +13,6 @@ edition = "2018"
 im-rc = "13.0.0"
 nom = "5.0.1"
 num = "0.2.0"
+lexical-core = { version = "0.6.0", features = ["radix"] }
+phf = { version = "0.7", features = ["macros"] }
 
