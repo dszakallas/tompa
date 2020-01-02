@@ -122,8 +122,9 @@ mod test {
         assert_eq!(float::<&str, FastError<&str>, f32>("0.000000001"), Ok(("", 1e-9f32)));
         assert_eq!(float::<&str, FastError<&str>, f64>("-1000.000000001"), Ok(("", -1000.000000001f64)));
 
-        assert_eq!(float::<&str, FastError<&str>, f64>("0x0.0pabcedf"), Ok(("", 0.0f64)));
+        assert_eq!(float::<&str, FastError<&str>, f64>("0x0.0p1324125"), Ok(("", 0.0f64)));
         assert_eq!(float::<&str, FastError<&str>, f64>("-0x0"), Ok(("", -0.0f64)));
+        assert_eq!(float::<&str, FastError<&str>, f64>("0x400.0p-10"), Ok(("", 1f64)));
     }
 
     #[test]
@@ -218,6 +219,9 @@ trait AsChar {
 
     #[inline]
     fn as_hex_digit(self) -> u8;
+
+    #[inline]
+    fn as_dec_digit(self) -> u8;
 }
 
 impl AsChar for char {
@@ -254,6 +258,13 @@ impl AsChar for char {
             _ => panic!("Not a hexadecimal digit")
         }
     }
+
+    fn as_dec_digit(self) -> u8 {
+        match self {
+            '0'..='9' => self as u8 - '0' as u8,
+            _ => panic!("Not a decimal digit")
+        }
+    }
 }
 
 impl<'a> AsChar for &'a char {
@@ -271,6 +282,10 @@ impl<'a> AsChar for &'a char {
 
     fn as_hex_digit(self) -> u8 {
         (*self).as_hex_digit()
+    }
+
+    fn as_dec_digit(self) -> u8 {
+        (*self).as_dec_digit()
     }
 }
 
@@ -681,7 +696,6 @@ fn dec_float_num<'a, I: 'a, E: ParseError<I> + 'a, Out>(s: Option<char>) -> impl
 
 type Uxx<Out> = <Out as LcFloat>::Unsigned;
 
-#[inline]
 fn make_float<Out: LcFloat>(is_neg: bool, exponent: i32, significand: Uxx<Out>) -> Out
     where <Out as LcFloat>::Unsigned: FromPrimitive, {
     let _1 = Uxx::<Out>::ONE;
@@ -689,21 +703,27 @@ fn make_float<Out: LcFloat>(is_neg: bool, exponent: i32, significand: Uxx<Out>) 
 
     let sign_part = if is_neg { _1 } else { _0 };
 
-    // FIXME: I don't have the faintest idea why do I have to decrement the exponent part
-    // by MANTISSA_SIZE x 2
+    // Out::EXPONENT_BIAS includes Out::MANTISSA_SIZE, but we don't need that
     let exponent_part = Uxx::<Out>::from_i32(
-        exponent + Out::EXPONENT_BIAS - Out::MANTISSA_SIZE - Out::MANTISSA_SIZE
+        exponent + Out::EXPONENT_BIAS - Out::MANTISSA_SIZE
     ).unwrap();
-
-    let res = (sign_part << (Out::BITS as i32 - 1)) |
-        (exponent_part << Out::MANTISSA_SIZE) |
-        significand;
 
     Out::from_bits(
         (sign_part << (Out::BITS as i32 - 1)) |
             (exponent_part << Out::MANTISSA_SIZE) |
             significand
     )
+}
+
+fn shift_and_round_to_nearest<Out: LcFloat>(
+    mut significand: Uxx<Out>,
+    shift: i32,
+    seen_trailing_non_zero: bool) -> Uxx<Out> {
+    if (significand & (Uxx::<Out>::ONE << shift)) != Uxx::<Out>::ZERO || seen_trailing_non_zero {
+        significand += Uxx::<Out>::ONE << (shift - 1);
+    }
+    significand = significand >> shift;
+    significand
 }
 
 #[inline]
@@ -727,17 +747,22 @@ fn hex_float_num<'a, I: 'a, E: ParseError<I> + 'a, Out>(s: Option<char>) -> impl
             hex_num,
             opt(tuple((
                 opt(preceded(char('.'), hex_num)),
-                opt(preceded(alt((char('p'), char('P'))), tuple((sign, hex_num)))),
+                opt(preceded(alt((char('p'), char('P'))), tuple((sign, dec_num)))),
             )))))), move |preparsed| {
         let is_neg = s.map(|s| s == '-').unwrap_or(false);
 
-        let mut int = preparsed.0.as_str().chars();
-
+        let mut int_iter = preparsed.0.as_str().chars();
         let mut significand = Uxx::<Out>::zero();
         let mut significand_exponent = 0i32;
         let mut seen_trailing_non_zero = false;
 
-        while let Some(c) = int.next() {
+        let max_exp = <Out as LcFloat>::MAX_EXPONENT + <Out as LcFloat>::MANTISSA_SIZE;
+        let min_exp = - max_exp + 1;
+        let _1 = Uxx::<Out>::ONE;
+        let _0 = Uxx::<Out>::ZERO;
+
+
+        while let Some(c) = int_iter.next() {
             let digit = c.as_hex_digit();
             if <Out as LcFloat>::BITS as u32 - significand.leading_zeros() <= (<Out as LcFloat>::MANTISSA_SIZE + 1) as u32 {
                 significand = (significand << 4) + Uxx::<Out>::from_u8(digit).unwrap();
@@ -747,11 +772,11 @@ fn hex_float_num<'a, I: 'a, E: ParseError<I> + 'a, Out>(s: Option<char>) -> impl
             }
         }
 
-        let mut frac = preparsed.1.iter()
+        let mut frac_iter = preparsed.1.iter()
             .flat_map(|t| t.0.iter())
             .flat_map(|str| str.chars());
 
-        while let Some(c) = frac.next() {
+        while let Some(c) = frac_iter.next() {
             let digit = c.as_hex_digit();
             if <Out as LcFloat>::BITS as u32 - significand.leading_zeros() <= (<Out as LcFloat>::MANTISSA_SIZE + 1) as u32 {
                 significand = (significand << 4) + Uxx::<Out>::from_u8(digit).unwrap();
@@ -761,13 +786,91 @@ fn hex_float_num<'a, I: 'a, E: ParseError<I> + 'a, Out>(s: Option<char>) -> impl
             }
         }
 
-        if significand == Uxx::<Out>::ZERO {
-            return Ok(make_float(is_neg, -<Out as LcFloat>::MAX_EXPONENT + 1, significand));
+        if significand == _0 {
+            return Ok(make_float(is_neg, min_exp, significand));
         }
 
+        let mut exponent = 0i32;
+        let mut exponent_is_neg = false;
 
-        let res: Result<Out, ()> = unimplemented!("Implement hex float parser");
-        return res;
+        if let Some((s, exp)) = preparsed.1.iter().flat_map(|t| t.1.iter()).next() {
+            exponent_is_neg = s.map(|s| s == '-').unwrap_or(false);
+
+            // Exponent is always positive, but significand_exponent is signed.
+            // significand_exponent is negated if exponent will be negative, so it
+            // can be easily summed to see if the exponent is too large (see below).
+            let too_large_exp = max_exp -
+                if exponent_is_neg { -significand_exponent } else { significand_exponent };
+
+            let mut exp_iter = exp.chars();
+
+            while let Some(c) = exp_iter.next() {
+                let digit = c.as_dec_digit();
+                exponent = exponent * 10 + (digit as i32);
+                if exponent >= too_large_exp {
+                    return Err(());
+                }
+            }
+
+            if exponent_is_neg {
+                exponent = -exponent;
+            }
+        }
+
+        let significand_bits = <Out as LcFloat>::BITS as i32 - significand.leading_zeros() as i32;
+
+        exponent += significand_exponent + significand_bits - 1;
+
+        if exponent <= min_exp {
+
+            // Maybe subnormal
+
+            // Normalize significand
+            if significand_bits > <Out as LcFloat>::MANTISSA_SIZE {
+                let shift = significand_bits - <Out as LcFloat>::MANTISSA_SIZE;
+                significand = significand >> shift;
+                // update seen_trailing_non_zero;
+                let mask = (_1 << (shift - 1)) - _1;
+                seen_trailing_non_zero |= (significand & mask) != _0;
+            } else if significand_bits < <Out as LcFloat>::MANTISSA_SIZE {
+                significand = significand << (<Out as LcFloat>::MANTISSA_SIZE - significand_bits);
+            }
+
+            let shift = min_exp - exponent;
+            if shift <= <Out as LcFloat>::MANTISSA_SIZE {
+                if shift > 0 {
+                    // update seen_trailing_non_zero;
+                    let mask = (_1 << (shift - 1)) - _1;
+                    seen_trailing_non_zero |= (significand & mask) != _0;
+
+                    significand = shift_and_round_to_nearest::<Out>(significand, shift, seen_trailing_non_zero);
+                }
+
+                exponent = min_exp;
+
+                if significand != _0 {
+                    return Ok(make_float(is_neg, exponent, significand));
+                }
+            }
+           return Ok(make_float(is_neg, min_exp, _0));
+        }
+
+        if significand_bits > <Out as LcFloat>::MANTISSA_SIZE + 1 {
+            significand = shift_and_round_to_nearest::<Out>(
+                significand,
+                significand_bits - <Out as LcFloat>::MANTISSA_SIZE + 1,
+                seen_trailing_non_zero
+            );
+            if significand > (_1 << <Out as LcFloat>::MANTISSA_SIZE + 1) - _1 {
+                exponent = exponent + 1;
+            }
+        } else if exponent >= max_exp {
+            // Would be inf or -inf, but the spec doesn't allow rounding hex-floats to
+            // infinity.
+            return Err(());
+        }
+
+        Ok(make_float(is_neg, exponent, significand & <Out as LcFloat>::MANTISSA_MASK))
     })
 }
 
