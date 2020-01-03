@@ -40,8 +40,8 @@ pub struct MemType {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Limits {
-    pub min: u64,
-    pub max: Option<u64>,
+    pub min: u32,
+    pub max: Option<u32>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

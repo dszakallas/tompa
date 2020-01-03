@@ -11,21 +11,11 @@ mod tests {
             .check(&Limits { min: 1, max: None }, &Context::empty())
             .unwrap();
 
-        LimitsBoundRule { bound: 1 << 16 }
+        LimitsBoundRule { bound: 1 << 8 }
             .check(
                 &Limits {
-                    min: 1 << 32,
+                    min: 1 << 16,
                     max: None,
-                },
-                &Context::empty(),
-            )
-            .unwrap_err();
-
-        LimitsBoundRule { bound: 1 << 32 }
-            .check(
-                &Limits {
-                    min: 1 << 32,
-                    max: Some(1 << 16),
                 },
                 &Context::empty(),
             )
@@ -35,7 +25,17 @@ mod tests {
             .check(
                 &Limits {
                     min: 1 << 16,
-                    max: Some(1 << 32),
+                    max: Some(1 << 8),
+                },
+                &Context::empty(),
+            )
+            .unwrap_err();
+
+        LimitsBoundRule { bound: 1 << 8 }
+            .check(
+                &Limits {
+                    min: 1 << 8,
+                    max: Some(1 << 16),
                 },
                 &Context::empty(),
             )
@@ -81,8 +81,8 @@ mod tests {
             .check(
                 &TableType {
                     limits: Limits {
-                        min: 1 << 32,
-                        max: Some(1 << 32),
+                        min: 1 << 16,
+                        max: Some(1 << 16),
                     },
                     elemtype: FuncRef {},
                 },
@@ -94,8 +94,8 @@ mod tests {
             .check(
                 &TableType {
                     limits: Limits {
-                        min: 1 << 33,
-                        max: Some(1 << 32),
+                        min: 1 << 17,
+                        max: Some(1 << 16),
                     },
                     elemtype: FuncRef {},
                 },
@@ -154,7 +154,7 @@ mod tests {
     }
 }
 
-rule!(LimitsBoundRule { bound: u64 }: Limits => (), limits_bound_rule);
+rule!(LimitsBoundRule { bound: u32 }: Limits => (), limits_bound_rule);
 
 fn limits_bound_rule(
     syntax: &Limits,
@@ -189,7 +189,7 @@ fn table_type_rule(
     rule: &TableTypeRule,
     context: &Context,
 ) -> WrappedResult<()> {
-    LimitsBoundRule { bound: 1 << 32 }.check(&syntax.limits, context)?;
+    LimitsBoundRule { bound: 1 << 16 }.check(&syntax.limits, context)?;
     Ok(())
 }
 
