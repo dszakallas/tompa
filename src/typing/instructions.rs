@@ -1,16 +1,16 @@
-use super::*;
+use std::iter::FromIterator;
+use std::ops::Add;
 
 use crate::syntax::instructions::*;
 use crate::syntax::types::*;
 
-use std::iter::FromIterator;
-use std::ops::Add;
+use super::*;
 
 mod numeric {
     use super::*;
 
     #[cfg(test)]
-    mod tests {
+    mod test {
         use super::*;
     }
 
@@ -39,7 +39,7 @@ mod memory {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]
@@ -48,7 +48,7 @@ mod tests {
             .check(
                 &Block {
                     result: None,
-                    instr: vec![],
+                    instrs: vec![],
                 },
                 &Context::empty(),
             )
@@ -66,7 +66,7 @@ mod tests {
             .check(
                 &Block {
                     result: Some(ValType::I64),
-                    instr: vec![Instruction::Const(Const::I64(256))],
+                    instrs: vec![Instr::Const(Const::I64(256))],
                 },
                 &Context::empty(),
             )
@@ -94,7 +94,7 @@ rule!(BlockRule: Block => FuncType, block_rule);
 fn block_rule(syntax: &Block, rule: &BlockRule, context: &Context) -> WrappedResult<FuncType> {
     let block_context =
         check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax, rule))?;
-    let result = check_expr(&syntax.instr, false, context)?;
+    let result = check_expr(&syntax.instrs, false, context)?;
 
     if result == syntax.result {
         Ok(FuncType {
@@ -106,10 +106,10 @@ fn block_rule(syntax: &Block, rule: &BlockRule, context: &Context) -> WrappedRes
     }
 }
 
-rule!(InstructionSeqRule { start_stack: Vec<ValType>, is_const: bool }: Vec<Instruction> => FuncType, instruction_seq_rule);
+rule!(InstructionSeqRule { start_stack: Vec<ValType>, is_const: bool }: Vec<Instr> => FuncType, instruction_seq_rule);
 
 fn instruction_seq_rule(
-    syntax: &Vec<Instruction>,
+    syntax: &Vec<Instr>,
     rule: &InstructionSeqRule,
     context: &Context,
 ) -> WrappedResult<FuncType> {
@@ -121,7 +121,7 @@ fn instruction_seq_rule(
 }
 
 fn check_expr(
-    instr: &Vec<Instruction>,
+    instr: &Vec<Instr>,
     is_const: bool,
     context: &Context,
 ) -> WrappedResult<Option<ValType>> {
@@ -138,17 +138,18 @@ fn check_expr(
 }
 
 fn check_instruction_seq(
-    instr: &Vec<Instruction>,
+    instr: &Vec<Instr>,
     start_stack: Vec<ValType>,
     is_const: bool,
 ) -> Option<Vec<ValType>> {
     let mut stack = start_stack;
     for i in instr {
         match i {
-            Instruction::Const(Const::I32(x)) => stack.push(ValType::I32),
-            Instruction::Const(Const::I64(x)) => stack.push(ValType::I64),
-            Instruction::Const(Const::F32(x)) => stack.push(ValType::F32),
-            Instruction::Const(Const::F64(x)) => stack.push(ValType::F64),
+            Instr::Const(Const::I32(x)) => stack.push(ValType::I32),
+            Instr::Const(Const::I64(x)) => stack.push(ValType::I64),
+            Instr::Const(Const::F32(x)) => stack.push(ValType::F32),
+            Instr::Const(Const::F64(x)) => stack.push(ValType::F64),
+            _ => unimplemented!()
         }
     }
     Some(stack)

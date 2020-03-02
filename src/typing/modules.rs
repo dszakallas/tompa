@@ -1,16 +1,18 @@
-use super::instructions::*;
-use super::*;
+use std::collections::HashSet;
+use std::ops::{Add, DerefMut};
+
+use im_rc;
+
 use crate::syntax::instructions::*;
 use crate::syntax::modules::*;
 use crate::syntax::types::*;
 use crate::typing::types::*;
-use im_rc;
 
-use std::collections::HashSet;
-use std::ops::{Add, DerefMut};
+use super::*;
+use super::instructions::*;
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]
@@ -21,7 +23,7 @@ mod tests {
                     type_idx: 0,
                     locals: vec![],
                     body: Expr {
-                        instr: vec![Instruction::Const(Const::I64(256))],
+                        instr: vec![Instr::Const(Const::I64(256))],
                     },
                 },
                 &Context {
@@ -117,7 +119,7 @@ mod tests {
                         valtype: ValType::I32,
                     },
                     expr: Expr {
-                        instr: vec![Instruction::Const(Const::I64(256))],
+                        instr: vec![Instr::Const(Const::I64(256))],
                     },
                 },
                 &Context::empty(),
@@ -132,7 +134,7 @@ mod tests {
                         valtype: ValType::I32,
                     },
                     expr: Expr {
-                        instr: vec![Instruction::Const(Const::I32(256))],
+                        instr: vec![Instr::Const(Const::I32(256))],
                     },
                 },
                 &Context::empty(),
@@ -147,7 +149,7 @@ mod tests {
                 &ElementSegment {
                     table: 0,
                     offset: Expr {
-                        instr: vec![Instruction::Const(Const::I32(256))],
+                        instr: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -171,7 +173,7 @@ mod tests {
                 &ElementSegment {
                     table: 0,
                     offset: Expr {
-                        instr: vec![Instruction::Const(Const::I32(256))],
+                        instr: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -196,7 +198,7 @@ mod tests {
                 &ElementSegment {
                     table: 0,
                     offset: Expr {
-                        instr: vec![Instruction::Const(Const::I32(256))],
+                        instr: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -227,7 +229,7 @@ mod tests {
                 &DataSegment {
                     data: 0,
                     offset: Expr {
-                        instr: vec![Instruction::Const(Const::I32(256))],
+                        instr: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -249,7 +251,7 @@ mod tests {
                 &DataSegment {
                     data: 0,
                     offset: Expr {
-                        instr: vec![Instruction::Const(Const::I32(256))],
+                        instr: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },

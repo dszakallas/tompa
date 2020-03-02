@@ -30,20 +30,6 @@ pub struct GlobalGet(u32);
 
 pub struct GlobalSet(u32);
 
-//#[derive(Clone, Debug)]
-//pub struct Load {
-//    pub t: ValType,
-//    pub memarg: MemArg,
-//    pub n: Option<(ValType, Sx)>,
-//}
-//
-//#[derive(Clone, Debug)]
-//pub struct Store {
-//    pub t: ValType,
-//    pub memarg: MemArg,
-//    pub n: Option<ValType>,
-//}
-
 pub enum BitWidth {
     _8,
     _16,
@@ -73,27 +59,38 @@ pub struct MemoryGrow {}
 pub struct Nop {}
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Instruction {
-    Const(Const),
-    //    Load(Load),
-    //    Store(Store)
+pub enum Instr {
+    BlockInstr(BlockInstr),
+    Const(Const)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
+pub enum BlockInstr {
+    Block(Block),
+    Loop(Loop),
+    IfElse(IfElse)
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Block {
     pub result: Option<ValType>,
-    pub instr: Vec<Instruction>,
+    pub instrs: Vec<Instr>,
 }
 
-//#[derive(Clone, Debug)]
-//pub struct IfElse {
-//    pub label: Option<LabelIdx>,
-//    pub result: Option<ValType>,
-//    pub if_instr: Vec<Instruction>,
-//    pub else_instr: Vec<Instruction>,
-//}
+#[derive(Clone, Debug, PartialEq)]
+pub struct Loop {
+    pub result: Option<ValType>,
+    pub instrs: Vec<Instr>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct IfElse {
+    pub result: Option<ValType>,
+    pub if_instrs: Vec<Instr>,
+    pub else_instrs: Vec<Instr>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
-    pub instr: Vec<Instruction>,
+    pub instr: Vec<Instr>,
 }

@@ -1,206 +1,52 @@
-use lexical_core::{Float as LcFloat, Integer as LcInteger};
-use lexical_core::FromLexical;
-use nom::error::ParseError;
-use nom::{AsChar as NomAsChar, InputTakeAtPosition, InputIter, IResult, Slice, InputTake, Compare, InputLength};
-use std::ops::{Add, RangeFrom};
-use nom::branch::alt;
-use nom::sequence::{tuple, pair, Tuple, terminated, preceded, delimited};
-use nom::combinator::{map_res, opt, map, not, value, peek};
-use nom::character::complete::{char, hex_digit1, digit1, anychar, not_line_ending};
-use nom::bytes::complete::{tag, take_while_m_n, take_while, take_while1};
-use nom::multi::{fold_many0, many0, many1};
-use num::{Unsigned, Num, Signed, Float, FromPrimitive};
 use std::convert::TryFrom;
-use crate::syntax::types::{ValType, FuncType, GlobalType, Mut, Limits, TableType, FuncRef, MemType};
-use nom::lib::std::ops::{Range, RangeTo};
+use std::ops::{Add, RangeFrom};
 use std::str::Chars;
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use nom::error::{VerboseError, ErrorKind};
-    use nom::Err::Error;
-    use nom::error::ErrorKind::Eof;
+use im_rc;
+use lexical_core::{Float as LcFloat, Integer as LcInteger};
+use lexical_core::FromLexical;
+use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
+use nom::branch::alt;
+use nom::bytes::complete::{tag, take_while, take_while1, take_while_m_n};
+use nom::character::complete::{anychar, char, digit1, hex_digit1, not_line_ending};
+use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
+use nom::error::{ErrorKind, ParseError};
+use nom::lib::std::ops::{Range, RangeTo};
+use nom::multi::{fold_many0, many0, many1};
+use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
+use num::{Float, FromPrimitive, Num, Signed, Unsigned};
 
-    type FastError<T> = (T, ErrorKind);
+use crate::syntax::instructions::{Block, IfElse, Instr, Loop};
+use crate::syntax::instructions::Instr::BlockInstr;
+use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemType, Mut, TableType, ValType};
 
-    impl<'a> AsStr<'a> for &'a str {
-        fn as_str(self) -> &'a str {
-            self
+///// Holds the result of parsing functions with C
+//pub type ICResult<I, C, O, E=(I,ErrorKind)> = Result<(I, C, O), Err<E>>;
+
+#[derive(Clone, PartialEq, Debug, Default)]
+struct IdCtx {
+    pub types: im_rc::Vector<Option<String>>,
+    pub funcs: im_rc::Vector<Option<String>>,
+    pub tables: im_rc::Vector<Option<String>>,
+    pub mems: im_rc::Vector<Option<String>>,
+    pub globals: im_rc::Vector<Option<String>>,
+    pub locals: im_rc::Vector<Option<String>>,
+    pub labels: im_rc::Vector<Option<String>>,
+    pub typedefs: im_rc::Vector<FuncType>,
+}
+
+impl IdCtx {
+    fn new() -> IdCtx {
+        IdCtx { 
+            types: im_rc::vector![],
+            funcs: im_rc::vector![],
+            tables: im_rc::vector![],
+            mems: im_rc::vector![],
+            globals: im_rc::vector![],
+            locals: im_rc::vector![],
+            labels: im_rc::vector![],
+            typedefs: im_rc::vector![],
         }
-    }
-
-    #[test]
-    fn test_idchar() {
-        assert_eq!(
-            idchar::<&str, FastError<&str>>("de432#@ b"),
-            Ok((" b", "de432#@"))
-        );
-    }
-
-    #[test]
-    fn test_id() {
-        assert_eq!(
-            id::<&str, FastError<&str>>("$$f@0f!# a"),
-            Ok((" a", "$f@0f!#"))
-        );
-        id::<&str, FastError<&str>>("0d@0f!# a").unwrap_err();
-    }
-
-    #[test]
-    fn test_string() {
-        assert_eq!(
-            string::<FastError<&str>>("\"Lorem ipsum dolor sit amet\""),
-            Ok(("", "Lorem ipsum dolor sit amet".to_owned()))
-        );
-        string::<FastError<&str>>("\"Lorem").unwrap_err();
-        assert_eq!(
-            string::<FastError<&str>>(
-                "\"ASCII: \\42, TAB: \\t, CRLF: \\r\\n, Unicode: \\u{05d0}\""
-            ),
-            Ok(("", "ASCII: B, TAB: \t, CRLF: \r\n, Unicode: א".to_owned()))
-        );
-        string::<FastError<&str>>("\"\\uinvalid\"").unwrap_err();
-        string::<FastError<&str>>("\"\\q\"").unwrap_err();
-    }
-
-    #[test]
-    fn test_unsigned_int() {
-        assert_eq!(
-            uxx::<&str, FastError<&str>, u64>("0xF"),
-            Ok(("", 0xF_u64))
-        );
-        assert_eq!(
-            uxx::<&str, FastError<&str>, u64>("0x012_3_456_789_ABCDEF"),
-            Ok(("", 0x0123_4567_89AB_CDEF_u64))
-        );
-        assert_eq!(
-            uxx::<&str, FastError<&str>, u32>("1234"),
-            Ok(("", 1234_u32))
-        );
-        assert_eq!(
-            uxx::<&str, FastError<&str>, u32>("000000_00_0_0000000000000000000"),
-            Ok(("", 0_u32))
-        );
-        uxx::<&str, FastError<&str>, u64>("0x012_3_456_789_ABCDEFFFFFF").unwrap_err();
-    }
-
-    #[test]
-    fn test_signed_int() {
-        sxx::<&str, FastError<&str>, i8>("0xFF").unwrap_err();
-        assert_eq!(
-            sxx::<&str, FastError<&str>, i8>("0x7F"),
-            Ok(("", 127_i8))
-        );
-        assert_eq!(
-            sxx::<&str, FastError<&str>, i8>("-0x8_0"),
-            Ok(("", -128_i8))
-        );
-        assert_eq!(
-            sxx::<&str, FastError<&str>, i8>("-00000_0000_0000000000123"),
-            Ok(("", -123_i8))
-        );
-    }
-
-    #[test]
-    fn test_int() {
-        assert_eq!(ixx::<&str, FastError<&str>, u8>("0x7F"), Ok(("", 127_u8)));
-        assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x8_0"), Ok(("", 128_u8)));
-        assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x1"), Ok(("", 255_u8)));
-        assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x0"), Ok(("", 0_u8)));
-    }
-
-    #[test]
-    fn test_float() {
-        assert_eq!(float::<&str, FastError<&str>, f32>("inf"), Ok(("", f32::INFINITY)));
-        assert_eq!(float::<&str, FastError<&str>, f64>("-inf"), Ok(("", f64::NEG_INFINITY)));
-        assert_ne!(
-            float::<&str, FastError<&str>, f32>("nan"),
-            float::<&str, FastError<&str>, f32>("nan")
-        );
-        assert_eq!(float::<&str, FastError<&str>, f32>("0.1"), Ok(("", 1e-1f32)));
-        assert_eq!(float::<&str, FastError<&str>, f32>("0.000000001"), Ok(("", 1e-9f32)));
-        assert_eq!(float::<&str, FastError<&str>, f64>("-1000.000000001"), Ok(("", -1000.000000001f64)));
-
-        assert_eq!(float::<&str, FastError<&str>, f64>("0x0.0p1324125"), Ok(("", 0.0f64)));
-        assert_eq!(float::<&str, FastError<&str>, f64>("-0x0"), Ok(("", -0.0f64)));
-        // FIXME hex float parsing
-        //assert_eq!(float::<&str, FastError<&str>, f64>("0x400.0p-10"), Ok(("", 1f64)));
-    }
-
-    #[test]
-    fn test_linecomment() {
-        assert_eq!(
-            linecomment::<&str, FastError<&str>>(";;comment"),
-            Ok(("", LineComment::<'static>("comment")))
-        );
-        assert_eq!(
-            linecomment::<&str, FastError<&str>>(";;comment\nnot comment"),
-            Ok(("\nnot comment", LineComment::<'static>("comment")))
-        );
-    }
-
-    #[test]
-    fn test_blockcomment() {
-        assert_eq!(
-            blockcomment::<&str, FastError<&str>>("(;;)"),
-            Ok(("", BlockComment))
-        );
-        assert_eq!(
-            blockcomment::<&str, FastError<&str>>("(;(;;);)"),
-            Ok(("", BlockComment))
-        );
-        assert_eq!(
-            blockcomment::<&str, FastError<&str>>("(;;((;a;);)"),
-            Ok(("", BlockComment))
-        );
-        assert_eq!(
-            blockcomment::<&str, FastError<&str>>("(;;((;a;););)"),
-            Ok((";)", BlockComment))
-        );
-        blockcomment::<&str, FastError<&str>>("(;").unwrap_err();
-    }
-
-    #[test]
-    fn test_token() {
-        assert_eq!(
-            token(float::<&str, FastError<&str>, f32>)("-inf"),
-            Ok(("", f32::NEG_INFINITY))
-        );
-        assert_eq!(
-            token(tag::<'static, &str, &str, FastError<&str>>("func"))("func("),
-            Ok(("(", "func"))
-        );
-        assert_eq!(
-            token(tag::<'static, &str, &str, FastError<&str>>("mem"))("mem;;comment\n)"),
-            Ok((")", "mem"))
-        );
-    }
-
-    #[test]
-    fn test_valtype() {
-        assert_eq!(valtype::<&str, FastError<&str>>("i32"), Ok(("", ValType::I32)));
-    }
-
-    #[test]
-    fn test_globaltype() {
-        assert_eq!(
-            globaltype::<'static, &str, FastError<&str>>("f64"),
-            Ok(("", GlobalType { mut_: Mut::Const, valtype: ValType::F64 }))
-        );
-        assert_eq!(
-            globaltype::<'static, &str, FastError<&str>>("(mut f32)"),
-            Ok(("", GlobalType { mut_: Mut::Var, valtype: ValType::F32 }))
-        );
-    }
-
-    #[test]
-    fn test_tabletype() {
-        assert_eq!(
-            tabletype::<'static, &str, FastError<&str>>("13 0x001F funcref o"),
-            Ok(("o", TableType { limits: Limits { min: 13u32, max: Some(31u32) }, elemtype: FuncRef {} }))
-        );
-        tabletype::<'static, &str, FastError<&str>>("-12 0x001F funcref").unwrap_err();
     }
 }
 
@@ -316,6 +162,7 @@ impl<'a> AsChar for &'a char {
     }
 }
 
+
 #[derive(Clone, PartialEq, Debug)]
 struct LineComment<'a>(&'a str);
 
@@ -412,8 +259,7 @@ fn id<'a, I: 'a, E: ParseError<I>>(i: I) -> IResult<I, &'a str, E>
         <I as InputIter>::Item: NomAsChar + AsChar,
         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar,
 {
-    let (i, _) = char('$')(i)?;
-    idchar(i)
+    preceded(char('$'), idchar)(i)
 }
 
 #[inline]
@@ -931,7 +777,7 @@ macro_rules! block {
     ($parser:expr) => {
         delimited(
               terminated(char('('), many0(ws)),
-              token($parser),
+              $parser,
               terminated(char(')'), many0(ws))
         )
     };
@@ -975,8 +821,8 @@ fn globaltype<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, GlobalType, 
         <I as InputIter>::Item: NomAsChar + AsChar,
         <I as InputTakeAtPosition>::Item: AsChar, {
     alt((
-        map(token(valtype), |v| GlobalType { mut_: Mut::Const, valtype: v }),
-        map(block!(preceded(token(tag("mut")), token(valtype))), |v| GlobalType { mut_: Mut::Var, valtype: v })
+        map(token(valtype), |valtype| GlobalType { mut_: Mut::Const, valtype }),
+        map(block!(preceded(token(tag("mut")), token(valtype))), |valtype| GlobalType { mut_: Mut::Var, valtype })
     ))(i)
 }
 
@@ -1043,20 +889,29 @@ fn memtype<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, MemType, E>
     map(limits, |limits| MemType { limits })(i)
 }
 
-
-//#[inline]
-//fn functype<I, E: ParseError<I>>(i: I) -> IResult<I, FuncType, E> {
-//    map(block!(
-//        tag("func"),
-//        many0(param),
-//        many0(result)
-//    ), |t| {
-//        Ok(FuncType {})
-//    })
-//}
+#[inline]
+fn functype<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, FuncType, E>
+    where
+        I: Clone
+        + PartialEq
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + InputIter
+        + InputLength
+        + InputTakeAtPosition
+        + InputTake
+        + AsStr<'a>
+        + Compare<&'static str>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    map(block!(preceded(token(tag("func")), tuple((params, results)))), |((parameters, results))| {
+        FuncType { parameters, results }
+    })(i)
+}
 
 #[inline]
-fn param<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, (Vec<ValType>, Vec<String>), E>
+fn param<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, ValType, E>
     where
         I: Clone
         + Slice<RangeFrom<usize>>
@@ -1073,16 +928,59 @@ fn param<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, (Vec<ValType>, Ve
         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
     block!(
         preceded(
-            tag("param"),
+            token(tag("param")),
+            map(tuple((opt(token(id)), token(valtype))), |(id, valtype)| valtype)
+        )
+    )(i)
+}
+
+#[inline]
+fn params<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, Vec<ValType>, E>
+    where
+        I: Clone
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + PartialEq
+        + InputIter
+        + InputTake
+        + InputLength
+        + InputTakeAtPosition
+        + Compare<&'static str>
+        + AsStr<'a>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    block!(
+        preceded(
+            token(tag("param")),
             alt((
-                map(tuple((id, valtype)), |(id, valtype)| (vec![valtype], vec![id.to_owned()])),
-                map(many1(valtype), |valtypes| (valtypes, vec![]))
+                map(tuple((token(id), token(valtype))), |(id, valtype)| vec![valtype]),
+                many1(token(valtype))
             ))
         ))(i)
 }
 
 #[inline]
-fn result<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, (Vec<ValType>, Vec<String>), E>
+fn result<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, ValType, E>
+    where
+        I: Clone
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + PartialEq
+        + InputIter
+        + InputTake
+        + InputLength
+        + InputTakeAtPosition
+        + Compare<&'static str>
+        + AsStr<'a>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    block!(preceded(token(tag("result")), token(valtype)))(i)
+}
+
+#[inline]
+fn results<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, Vec<ValType>, E>
     where
         I: Clone
         + Slice<RangeFrom<usize>>
@@ -1099,10 +997,494 @@ fn result<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, (Vec<ValType>, V
         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
     block!(
         preceded(
-            tag("result"),
+            token(tag("result")),
             alt((
-                map(tuple((id, valtype)), |(id, valtype)| (vec![valtype], vec![id.to_owned()])),
-                map(many1(valtype), |valtypes| (valtypes, vec![]))
+                map(tuple((token(id), token(valtype))), |(id, valtype)| vec![valtype]),
+                many1(token(valtype)),
             ))
         ))(i)
+}
+
+#[inline]
+fn label<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, IdCtx, E>
+    where
+        I: Clone
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + PartialEq
+        + InputIter
+        + InputTake
+        + InputLength
+        + InputTakeAtPosition
+        + Compare<&'static str>
+        + AsStr<'a>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    move |input: I| {
+        let i = input.clone();
+        let (i, c) = map_res(opt(token(id)), |id_opt| -> Result<Option<String>, ()> {
+            match id_opt {
+                Some(id) => {
+                    let item = Some(id.to_owned());
+                    if ctx.labels.index_of(&item) != None {
+                        Err(()) // TODO pretty error
+                    } else {
+                        Ok(item)
+                    }
+                }
+                None => Ok(None)
+            }
+        })(input)?;
+        let mut inner_ctx = ctx.clone();
+        inner_ctx.labels.push_back(c);
+        Ok((i, inner_ctx))
+    }
+}
+
+#[inline]
+fn instr<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, Instr, E>
+    where
+        I: Clone
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + PartialEq
+        + InputIter
+        + InputTake
+        + InputLength
+        + InputTakeAtPosition
+        + Compare<&'static str>
+        + AsStr<'a>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    move |i: I| {
+        token(tag("nonsense"))(i)?; // TODO implement instr parser
+        unimplemented!()
+    }
+}
+
+#[inline]
+fn id_checker<'a, 'b, I: 'a, E: ParseError<I> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, (), E> + 'b
+    where
+        I: Clone
+        + PartialEq
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + InputIter
+        + InputLength
+        + InputTakeAtPosition
+        + InputTake
+        + AsStr<'a>
+        + Compare<&'static str>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    move |i: I| {
+        map_res(
+            token(opt(id)),
+            |id_ch_opt| {
+                if let Some(id_ch) = id_ch_opt {
+                    let id_opt = &ctx.labels[ctx.labels.len() - 1];
+                    match id_opt {
+                        None => Err(()),
+                        Some(id) if id != id_ch => Err(()),
+                        _ => Ok(())
+                    }
+                } else {
+                    Ok(())
+                }
+            }
+        )(i)
+    }
+}
+
+#[inline]
+fn block<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, Block, E>
+    where
+        I: Clone
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + PartialEq
+        + InputIter
+        + InputTake
+        + InputLength
+        + InputTakeAtPosition
+        + Compare<&'static str>
+        + AsStr<'a>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    move |i: I| {
+        let (i, _) = token(tag("block"))(i)?;
+        let (i, inner_ctx) = label(ctx.clone())(i)?;
+        let (i, result) = opt(result)(i)?;
+        let (i, instrs) = many0(instr(inner_ctx.clone()))(i)?;
+        let (i, _) = token(tag("end"))(i)?;
+        let (i, _) = id_checker(&inner_ctx)(i)?;
+        Ok((i, Block { result, instrs }))
+    }
+}
+
+#[inline]
+fn loop_<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, Loop, E>
+    where
+        I: Clone
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + PartialEq
+        + InputIter
+        + InputTake
+        + InputLength
+        + InputTakeAtPosition
+        + Compare<&'static str>
+        + AsStr<'a>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    move |i: I| {
+        let (i, _) = token(tag("loop"))(i)?;
+        let (i, inner_ctx) = label(ctx.clone())(i)?;
+        let (i, result) = opt(result)(i)?;
+        let (i, instrs) = many0(instr(inner_ctx.clone()))(i)?;
+        let (i, _) = token(tag("end"))(i)?;
+        let (i, _) = id_checker(&inner_ctx)(i)?;
+        Ok((i, Loop { result, instrs }))
+    }
+}
+
+#[inline]
+fn if_else<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, IfElse, E>
+    where
+        I: Clone
+        + Slice<RangeFrom<usize>>
+        + Slice<Range<usize>>
+        + Slice<RangeTo<usize>>
+        + PartialEq
+        + InputIter
+        + InputTake
+        + InputLength
+        + InputTakeAtPosition
+        + Compare<&'static str>
+        + AsStr<'a>,
+        <I as InputIter>::Item: NomAsChar + AsChar,
+        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+    move |i: I| {
+        let (i, _) = token(tag("if"))(i)?;
+        let (i, inner_ctx) = label(ctx.clone())(i)?;
+        let (i, result) = opt(result)(i)?;
+        let (i, if_instrs) = many0(instr(inner_ctx.clone()))(i)?;
+        let (i, _) = token(tag("else"))(i)?;
+        let (i, _) = id_checker(&inner_ctx)(i)?;
+        let (i, else_instrs) = many0(instr(inner_ctx.clone()))(i)?;
+        let (i, _) = token(tag("end"))(i)?;
+        let (i, _) = id_checker(&inner_ctx)(i)?;
+        Ok((i, IfElse { result, if_instrs, else_instrs }))
+    }
+}
+
+//
+//#[inline]
+//fn blockinstr<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, BlockInstr, E>
+//    where
+//        I: Clone
+//        + Slice<RangeFrom<usize>>
+//        + Slice<Range<usize>>
+//        + Slice<RangeTo<usize>>
+//        + PartialEq
+//        + InputIter
+//        + InputTake
+//        + InputLength
+//        + InputTakeAtPosition
+//        + Compare<&'static str>
+//        + AsStr<'a>,
+//        <I as InputIter>::Item: NomAsChar + AsChar,
+//        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
+//    alt((
+//        map(
+//        delimited(token(tag("block")), tuple((opt(result), many0(instr))), token(tag("end"))),
+//|(result, instr)| BlockInstr::Block(Block { result, instr })
+//        ),
+//        map(
+//            delimited(token(tag("loop")), tuple((opt(result), many0(instr))), token(tag("end"))),
+//            |(result, instr)| BlockInstr::Loop(Loop { result, instr})
+//        ),
+//        map(
+//            delimited(token(tag("if")), tuple((opt(result), many0(instr))), token(tag("end"))),
+//            |(result, instr)| BlockInstr::Loop(Loop { result, instr})
+//        )
+//
+//    ))(i)
+//}
+
+#[cfg(test)]
+mod test {
+    use nom::Err::Error;
+    use nom::error::{ErrorKind, VerboseError};
+    use nom::error::ErrorKind::Eof;
+
+    use super::*;
+
+    type FastError<T> = (T, ErrorKind);
+
+    impl<'a> AsStr<'a> for &'a str {
+        fn as_str(self) -> &'a str {
+            self
+        }
+    }
+
+    #[test]
+    fn test_idchar() {
+        assert_eq!(
+            idchar::<&str, FastError<&str>>("de432#@ b"),
+            Ok((" b", "de432#@"))
+        );
+    }
+
+    #[test]
+    fn test_id() {
+        assert_eq!(
+            id::<&str, FastError<&str>>("$$f@0f!# a"),
+            Ok((" a", "$f@0f!#"))
+        );
+        id::<&str, FastError<&str>>("0d@0f!# a").unwrap_err();
+    }
+
+    #[test]
+    fn test_string() {
+        assert_eq!(
+            string::<FastError<&str>>("\"Lorem ipsum dolor sit amet\""),
+            Ok(("", "Lorem ipsum dolor sit amet".to_owned()))
+        );
+        string::<FastError<&str>>("\"Lorem").unwrap_err();
+        assert_eq!(
+            string::<FastError<&str>>(
+                "\"ASCII: \\42, TAB: \\t, CRLF: \\r\\n, Unicode: \\u{05d0}\""
+            ),
+            Ok(("", "ASCII: B, TAB: \t, CRLF: \r\n, Unicode: א".to_owned()))
+        );
+        string::<FastError<&str>>("\"\\uinvalid\"").unwrap_err();
+        string::<FastError<&str>>("\"\\q\"").unwrap_err();
+    }
+
+    #[test]
+    fn test_unsigned_int() {
+        assert_eq!(
+            uxx::<&str, FastError<&str>, u64>("0xF"),
+            Ok(("", 0xF_u64))
+        );
+        assert_eq!(
+            uxx::<&str, FastError<&str>, u64>("0x012_3_456_789_ABCDEF"),
+            Ok(("", 0x0123_4567_89AB_CDEF_u64))
+        );
+        assert_eq!(
+            uxx::<&str, FastError<&str>, u32>("1234"),
+            Ok(("", 1234_u32))
+        );
+        assert_eq!(
+            uxx::<&str, FastError<&str>, u32>("000000_00_0_0000000000000000000"),
+            Ok(("", 0_u32))
+        );
+        uxx::<&str, FastError<&str>, u64>("0x012_3_456_789_ABCDEFFFFFF").unwrap_err();
+    }
+
+    #[test]
+    fn test_signed_int() {
+        sxx::<&str, FastError<&str>, i8>("0xFF").unwrap_err();
+        assert_eq!(
+            sxx::<&str, FastError<&str>, i8>("0x7F"),
+            Ok(("", 127_i8))
+        );
+        assert_eq!(
+            sxx::<&str, FastError<&str>, i8>("-0x8_0"),
+            Ok(("", -128_i8))
+        );
+        assert_eq!(
+            sxx::<&str, FastError<&str>, i8>("-00000_0000_0000000000123"),
+            Ok(("", -123_i8))
+        );
+    }
+
+    #[test]
+    fn test_int() {
+        assert_eq!(ixx::<&str, FastError<&str>, u8>("0x7F"), Ok(("", 127_u8)));
+        assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x8_0"), Ok(("", 128_u8)));
+        assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x1"), Ok(("", 255_u8)));
+        assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x0"), Ok(("", 0_u8)));
+    }
+
+    #[test]
+    fn test_float() {
+        assert_eq!(float::<&str, FastError<&str>, f32>("inf"), Ok(("", f32::INFINITY)));
+        assert_eq!(float::<&str, FastError<&str>, f64>("-inf"), Ok(("", f64::NEG_INFINITY)));
+        assert_ne!(
+            float::<&str, FastError<&str>, f32>("nan"),
+            float::<&str, FastError<&str>, f32>("nan")
+        );
+        assert_eq!(float::<&str, FastError<&str>, f32>("0.1"), Ok(("", 1e-1f32)));
+        assert_eq!(float::<&str, FastError<&str>, f32>("0.000000001"), Ok(("", 1e-9f32)));
+        assert_eq!(float::<&str, FastError<&str>, f64>("-1000.000000001"), Ok(("", -1000.000000001f64)));
+
+        assert_eq!(float::<&str, FastError<&str>, f64>("0x0.0p1324125"), Ok(("", 0.0f64)));
+        assert_eq!(float::<&str, FastError<&str>, f64>("-0x0"), Ok(("", -0.0f64)));
+        // FIXME hex float parsing
+        //assert_eq!(float::<&str, FastError<&str>, f64>("0x400.0p-10"), Ok(("", 1f64)));
+    }
+
+    #[test]
+    fn test_linecomment() {
+        assert_eq!(
+            linecomment::<&str, FastError<&str>>(";;comment"),
+            Ok(("", LineComment::<'static>("comment")))
+        );
+        assert_eq!(
+            linecomment::<&str, FastError<&str>>(";;comment\nnot comment"),
+            Ok(("\nnot comment", LineComment::<'static>("comment")))
+        );
+    }
+
+    #[test]
+    fn test_blockcomment() {
+        assert_eq!(
+            blockcomment::<&str, FastError<&str>>("(;;)"),
+            Ok(("", BlockComment))
+        );
+        assert_eq!(
+            blockcomment::<&str, FastError<&str>>("(;(;;);)"),
+            Ok(("", BlockComment))
+        );
+        assert_eq!(
+            blockcomment::<&str, FastError<&str>>("(;;((;a;);)"),
+            Ok(("", BlockComment))
+        );
+        assert_eq!(
+            blockcomment::<&str, FastError<&str>>("(;;((;a;););)"),
+            Ok((";)", BlockComment))
+        );
+        blockcomment::<&str, FastError<&str>>("(;").unwrap_err();
+    }
+
+    #[test]
+    fn test_token() {
+        assert_eq!(
+            token(float::<&str, FastError<&str>, f32>)("-inf"),
+            Ok(("", f32::NEG_INFINITY))
+        );
+        assert_eq!(
+            token(tag::<'static, &str, &str, FastError<&str>>("func"))("func("),
+            Ok(("(", "func"))
+        );
+        assert_eq!(
+            token(tag::<'static, &str, &str, FastError<&str>>("mem"))("mem;;comment\n)"),
+            Ok((")", "mem"))
+        );
+    }
+
+    #[test]
+    fn test_label() {
+        {
+            let (i, inner_ctx) = label::<&str, FastError<&str>>(IdCtx::new())("$id").unwrap();
+            assert_eq!(i, "");
+            assert_eq!(inner_ctx.labels, im_rc::vector![Some("id".to_owned())])
+        }
+    }
+
+    #[test]
+    fn test_valtype() {
+        assert_eq!(valtype::<&str, FastError<&str>>("i32"), Ok(("", ValType::I32)));
+    }
+
+    #[test]
+    fn test_globaltype() {
+        assert_eq!(
+            globaltype::<'static, &str, FastError<&str>>("f64"),
+            Ok(("", GlobalType { mut_: Mut::Const, valtype: ValType::F64 }))
+        );
+        assert_eq!(
+            globaltype::<'static, &str, FastError<&str>>("(mut f32)"),
+            Ok(("", GlobalType { mut_: Mut::Var, valtype: ValType::F32 }))
+        );
+    }
+
+    #[test]
+    fn test_tabletype() {
+        assert_eq!(
+            tabletype::<'static, &str, FastError<&str>>("13 0x001F funcref o"),
+            Ok(("o", TableType { limits: Limits { min: 13u32, max: Some(31u32) }, elemtype: FuncRef {} }))
+        );
+        tabletype::<'static, &str, FastError<&str>>("-12 0x001F funcref").unwrap_err();
+    }
+
+    #[test]
+    fn test_functype() {
+        assert_eq!(
+            functype::<'static, &str, FastError<&str>>("(func (param $abcd i32) (result f64))("),
+            Ok(("(", FuncType { parameters: vec![ValType::I32], results: vec![ValType::F64] }))
+        )
+    }
+
+    #[test]
+    fn test_block() {
+        assert_eq!(
+            block::<'static, &str, FastError<&str>>(IdCtx::new())("block end"),
+            Ok(("", Block { result: None, instrs: vec![] }))
+        );
+        assert_eq!(
+            block::<'static, &str, FastError<&str>>(IdCtx::new())("block $my_block end"),
+            Ok(("", Block { result: None, instrs: vec![] }))
+        );
+
+        {
+            let mut id_ctx = IdCtx::new();
+            id_ctx.labels.push_back(Some("my_block".to_owned()));
+            block::<'static, &str, FastError<&str>>(id_ctx)("block $my_block end").unwrap_err();
+        }
+
+        assert_eq!(
+            block::<'static, &str, FastError<&str>>(IdCtx::new())("block $my_block end $my_block"),
+            Ok(("", Block { result: None, instrs: vec![] }))
+        );
+
+        block::<'static, &str, FastError<&str>>(IdCtx::new())("block $my_block end $wrong_block").unwrap_err();
+
+        assert_eq!(
+            block::<'static, &str, FastError<&str>>(IdCtx::new())("block (result f64) end"),
+            Ok(("", Block { result: Some(ValType::F64), instrs: vec![] }))
+        );
+    }
+
+    #[test]
+    fn test_loop() {
+        assert_eq!(
+            loop_::<'static, &str, FastError<&str>>(IdCtx::new())("loop end"),
+            Ok(("", Loop { result: None, instrs: vec![] }))
+        );
+        assert_eq!(
+            loop_::<'static, &str, FastError<&str>>(IdCtx::new())("loop $my_loop_ end"),
+            Ok(("", Loop { result: None, instrs: vec![] }))
+        );
+
+        {
+            let mut id_ctx = IdCtx::new();
+            id_ctx.labels.push_back(Some("my_loop".to_owned()));
+            loop_::<'static, &str, FastError<&str>>(id_ctx)("loop $my_loop end").unwrap_err();
+        }
+
+        assert_eq!(
+            loop_::<'static, &str, FastError<&str>>(IdCtx::new())("loop $my_loop end $my_loop"),
+            Ok(("", Loop { result: None, instrs: vec![] }))
+        );
+
+        loop_::<'static, &str, FastError<&str>>(IdCtx::new())("loop $my_loop end $wrong_loop").unwrap_err();
+
+        assert_eq!(
+            loop_::<'static, &str, FastError<&str>>(IdCtx::new())("loop (result f64) end"),
+            Ok(("", Loop { result: Some(ValType::F64), instrs: vec![] }))
+        );
+    }
+
+    #[test]
+    fn test_if_else() {
+        // TODO WRITE TESTS!!!
+    }
 }

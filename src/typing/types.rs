@@ -1,8 +1,9 @@
-use super::*;
 use crate::syntax::types::*;
 
+use super::*;
+
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]

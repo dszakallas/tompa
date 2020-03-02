@@ -1,13 +1,13 @@
-use crate::syntax::types::*;
-
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
-
-use im_rc;
 use std::option::NoneError;
 use std::rc::Rc;
+
+use im_rc;
+
+use crate::syntax::types::*;
 
 #[derive(Debug)]
 pub struct TypeError {
