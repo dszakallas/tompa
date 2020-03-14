@@ -23,7 +23,7 @@ mod test {
                     type_idx: 0,
                     locals: vec![],
                     body: Expr {
-                        instr: vec![Instr::Const(Const::I64(256))],
+                        instrs: vec![Instr::Const(Const::I64(256))],
                     },
                 },
                 &Context {
@@ -55,7 +55,7 @@ mod test {
                 &Function {
                     type_idx: 0,
                     locals: vec![],
-                    body: Expr { instr: vec![] },
+                    body: Expr { instrs: vec![] },
                 },
                 &Context {
                     types: im_rc::vector![FuncType {
@@ -119,7 +119,7 @@ mod test {
                         valtype: ValType::I32,
                     },
                     expr: Expr {
-                        instr: vec![Instr::Const(Const::I64(256))],
+                        instrs: vec![Instr::Const(Const::I64(256))],
                     },
                 },
                 &Context::empty(),
@@ -134,7 +134,7 @@ mod test {
                         valtype: ValType::I32,
                     },
                     expr: Expr {
-                        instr: vec![Instr::Const(Const::I32(256))],
+                        instrs: vec![Instr::Const(Const::I32(256))],
                     },
                 },
                 &Context::empty(),
@@ -149,7 +149,7 @@ mod test {
                 &ElementSegment {
                     table: 0,
                     offset: Expr {
-                        instr: vec![Instr::Const(Const::I32(256))],
+                        instrs: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -173,7 +173,7 @@ mod test {
                 &ElementSegment {
                     table: 0,
                     offset: Expr {
-                        instr: vec![Instr::Const(Const::I32(256))],
+                        instrs: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -198,7 +198,7 @@ mod test {
                 &ElementSegment {
                     table: 0,
                     offset: Expr {
-                        instr: vec![Instr::Const(Const::I32(256))],
+                        instrs: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -229,7 +229,7 @@ mod test {
                 &DataSegment {
                     data: 0,
                     offset: Expr {
-                        instr: vec![Instr::Const(Const::I32(256))],
+                        instrs: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -251,7 +251,7 @@ mod test {
                 &DataSegment {
                     data: 0,
                     offset: Expr {
-                        instr: vec![Instr::Const(Const::I32(256))],
+                        instrs: vec![Instr::Const(Const::I32(256))],
                     },
                     init: vec![0],
                 },
@@ -392,13 +392,8 @@ fn function_rule(
     context: &Context,
 ) -> WrappedResult<FuncType> {
     let (tpe, fn_context) = check_function_context(&syntax.type_idx, &syntax.locals, context)?;
-    let result = ExprRule { is_const: false }.check(&syntax.body, &fn_context)?;
-
-    if tpe.results.get(0) == result.as_ref() {
-        Ok(tpe)
-    } else {
-        None?
-    }
+    ExprRule { parameters: tpe.parameters.clone(), results: tpe.results.clone(), is_const: false }.check(&syntax.body, &fn_context)?;
+    Ok(tpe)
 }
 
 rule!(TableRule: Table => TableType, table_rule);
@@ -419,13 +414,8 @@ rule!(GlobalRule: Global => GlobalType, global_rule);
 
 fn global_rule(syntax: &Global, rule: &GlobalRule, context: &Context) -> WrappedResult<GlobalType> {
     GlobalTypeRule {}.check(&syntax.tpe, &context)?;
-    let result = ExprRule { is_const: true }.check(&syntax.expr, &context)?;
-
-    if result == Some(syntax.tpe.valtype) {
-        Ok(syntax.tpe.clone())
-    } else {
-        None?
-    }
+    ExprRule { parameters: vec![], results: vec![syntax.tpe.valtype], is_const: true }.check(&syntax.expr, context)?;
+    Ok(syntax.tpe)
 }
 
 rule!(ElementSegmentRule: ElementSegment => (), element_segment_rule);
@@ -443,13 +433,8 @@ fn element_segment_rule(
         context.funcs.get(*f as usize)?;
     }
 
-    let res = ExprRule { is_const: true }.check(&syntax.offset, context)?;
-
-    if res == Some(ValType::I32) {
-        Ok(())
-    } else {
-        None?
-    }
+    ExprRule { parameters: vec![], results: vec![ValType::I32], is_const: true }.check(&syntax.offset, context)?;
+    Ok(())
 }
 
 rule!(DataSegmentRule: DataSegment => (), data_segment_rule);
@@ -463,13 +448,8 @@ fn data_segment_rule(
 
     MemTypeRule {}.check(k, context)?;
 
-    let res = ExprRule { is_const: true }.check(&syntax.offset, context)?;
-
-    if res == Some(ValType::I32) {
-        Ok(())
-    } else {
-        None?
-    }
+    ExprRule { parameters: vec![], results: vec![ValType::I32], is_const: true }.check(&syntax.offset, context)?;
+    Ok(())
 }
 
 rule!(StartRule: Start => (), start_rule);

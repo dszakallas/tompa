@@ -1,0 +1,8 @@
+// Rules for parsing instructions
+
+varint LocalGet "local.get"
+
+
+(i: IdContext) => LocalGet(x) { "local.get" x:localidx(i) }
+() => I32Load(m)  { "i32.load" m:memarg(4) }
+() => Drop { "drop" }

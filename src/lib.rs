@@ -4,6 +4,7 @@
 
 extern crate im_rc;
 extern crate nom;
+extern crate ena;
 
 mod format;
 mod syntax;

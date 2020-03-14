@@ -1,12 +1,23 @@
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct FuncRef {}
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ValType {
     I32,
     F32,
     I64,
     F64,
+}
+
+impl ValType {
+    pub fn size(&self) -> u32 {
+        match &self {
+            ValType::I32 => 4,
+            ValType::F32 => 4,
+            ValType::I64 => 8,
+            ValType::F64 => 8,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
