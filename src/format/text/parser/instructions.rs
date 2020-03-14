@@ -1,34 +1,34 @@
-use std::convert::TryFrom;
-use std::ops::{Add, RangeFrom};
-use std::str::Chars;
 
-use im_rc;
-use lexical_core::{Float as LcFloat, Integer as LcInteger};
-use lexical_core::FromLexical;
+use std::ops::{RangeFrom};
+
+
+
+use lexical_core::{Integer as LcInteger};
+
 use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
-use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while, take_while1, take_while_m_n};
-use nom::character::complete::{anychar, char, digit1, hex_digit1, not_line_ending};
+
+use nom::bytes::complete::{tag};
+
 use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
 use nom::error::{ErrorKind, ParseError};
 use nom::lib::std::ops::{Range, RangeTo};
 use nom::multi::{fold_many0, many0, many1};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
-use num::{Float, FromPrimitive, Num, Signed, Unsigned};
+
 
 
 use crate::format::text::parser::lexical::AsChar;
 use crate::syntax::instructions::{Block, IfElse, Instr, Loop, Load, Store};
-use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemType, Mut, TableType, ValType, MemArg, Sx};
-use std::fmt::Debug;
-use nom::Err::Error;
+use crate::syntax::types::{ValType, MemArg, Sx};
+
+
 use crate::format::text::parser::IdCtx;
 use crate::format::text::parser::AsStr;
 use crate::format::text::parser::values::uxx;
 use crate::format::text::parser::lexical::token;
 use crate::format::text::parser::types::result;
 use crate::format::text::parser::values::id;
-use crate::format::text::parser::lexical::ws;
+
 
 
 #[inline]
@@ -48,7 +48,7 @@ fn label<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<
         <I as InputIter>::Item: NomAsChar + AsChar,
         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
     move |input: I| {
-        let i = input.clone();
+        let _i = input.clone();
         let (i, c) = map_res(opt(token(id)), |id_opt| -> Result<Option<String>, ()> {
             match id_opt {
                 Some(id) => {
@@ -69,7 +69,7 @@ fn label<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<
 }
 
 #[inline]
-fn instr<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, Instr, E>
+fn instr<'a, I: 'a, E: ParseError<I> + 'a>(_ctx: IdCtx) -> impl Fn(I) -> IResult<I, Instr, E>
     where
         I: Clone
         + Slice<RangeFrom<usize>>
@@ -278,7 +278,7 @@ fn memarg<'a, I: 'a, E: ParseError<I> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, 
 macro_rules! lsint {
     ($name:ident, $tag:expr, $syntax:tt, $valtype:expr, $storage_size:expr, $memarg:expr) => {
         #[inline]
-        pub fn $name<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, $syntax, E> + 'a
+        pub fn $name<'a, I: 'a, E: ParseError<I> + 'a>(_ctx: IdCtx) -> impl Fn(I) -> IResult<I, $syntax, E> + 'a
             where
                 I: Clone
                     + Slice<RangeFrom<usize>>
@@ -379,9 +379,9 @@ lsint!(i64store32, "i64.store32", Store, ValType::I64, Some(32), 4);
 
 #[cfg(test)]
 mod test {
-    use nom::Err::Error;
-    use nom::error::{ErrorKind, VerboseError};
-    use nom::error::ErrorKind::Eof;
+    
+    use nom::error::{ErrorKind};
+    
 
     use super::*;
 

@@ -1,21 +1,21 @@
 use std::iter::FromIterator;
-use std::ops::Add;
+
 
 use crate::syntax::instructions::*;
-use crate::syntax::types::*;
+
 
 use super::*;
-use nom::lib::std::collections::{VecDeque, HashMap};
+use nom::lib::std::collections::{HashMap};
 
 use ena::unify::{UnificationTable, UnifyKey, EqUnifyValue, InPlace};
 
-use ena::unify::UnifyValue;
+
 use nom::lib::std::convert::TryFrom;
 
 rule!(LoadRule: Load => FuncType, load_rule);
 
-fn load_rule(syntax: &Load, rule: &LoadRule, context: &Context) -> WrappedResult<FuncType> {
-    let size = if let Some((size, sx)) = syntax.storage_size {
+fn load_rule(syntax: &Load, _rule: &LoadRule, _context: &Context) -> WrappedResult<FuncType> {
+    let size = if let Some((size, _sx)) = syntax.storage_size {
         size / 8
     } else {
         syntax.valtype.size()
@@ -31,8 +31,8 @@ rule!(StoreRule: Store => FuncType, store_rule);
 
 fn store_rule(
     syntax: &Store,
-    rule: &StoreRule,
-    context: &Context,
+    _rule: &StoreRule,
+    _context: &Context,
 ) -> WrappedResult<FuncType> {
     let size = if let Some(size) = syntax.storage_size {
         size / 8
@@ -56,7 +56,7 @@ rule!(
 
 rule!(InstrRule: Instr => FuncType, instr_rule);
 
-fn instr_rule(syntax: &Instr, rule: &InstrRule, context: &Context) -> WrappedResult<FuncType> {
+fn instr_rule(syntax: &Instr, _rule: &InstrRule, context: &Context) -> WrappedResult<FuncType> {
     Ok(match syntax {
         Instr::Const(s) => ConstRule {}.check(s, context)?,
         Instr::Load(s) => LoadRule {}.check(s, context)?,
@@ -82,7 +82,7 @@ fn block_rule(syntax: &Block, rule: &BlockRule, context: &Context) -> WrappedRes
 }
 
 // FIXME implement const constraint
-fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs: &Vec<Instr>, context: &Context, is_const: bool) -> WrappedResult<FuncType> {
+fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs: &Vec<Instr>, context: &Context, _is_const: bool) -> WrappedResult<FuncType> {
     let mut param_stack = ParamStack::from(parameters);
 
     for instr in instrs.iter() {
@@ -150,7 +150,7 @@ impl From<Vec<Param>> for ParamStack {
 }
 
 impl From<FuncType> for ParamStack {
-    fn from(mut ft: FuncType) -> Self {
+    fn from(ft: FuncType) -> Self {
         Self::from(ParamFuncType {
             parameters: ft.parameters.into_iter().map(|p| Param::Const(p)).collect(),
             results: ft.results.into_iter().map(|p| Param::Const(p)).collect(),
@@ -159,10 +159,10 @@ impl From<FuncType> for ParamStack {
 }
 
 impl From<ParamFuncType> for ParamStack {
-    fn from(mut pft: ParamFuncType) -> Self {
+    fn from(pft: ParamFuncType) -> Self {
         let mut param_stack: ParamStack = Default::default();
         let mut remapping: HashMap<u32, UnifyValType> = Default::default();
-        let mut elems = pft.parameters.iter().rev().map(|i| (i, Diff::Rem)).chain(
+        let elems = pft.parameters.iter().rev().map(|i| (i, Diff::Rem)).chain(
             pft.results.iter().map(|i| (i, Diff::Add))
         );
 
@@ -210,9 +210,9 @@ impl ParamStack {
                     if d1 != Diff::Add {
                         return Err(NoneError)
                     }
-                    self.utable.unify_var_value(self_k, p_val).or_else(|err| Err(NoneError))?;
+                    self.utable.unify_var_value(self_k, p_val).or_else(|_err| Err(NoneError))?;
                     let self_val = self.utable.probe_value(self_k);
-                    other.utable.unify_var_value(*param_k, self_val).or_else(|err| Err(NoneError))?;
+                    other.utable.unify_var_value(*param_k, self_val).or_else(|_err| Err(NoneError))?;
                 }
                 Diff::Add => {
                     self.stack.push((*param_k, Diff::Add));
@@ -280,8 +280,8 @@ fn check_block_context(label: &Option<ValType>, context: &Context) -> Option<Con
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::path::Prefix::Verbatim;
-    use ena::unify::{InPlace, UnifyKey, UnifyValue, EqUnifyValue};
+    
+    
 
     #[test]
     fn test_block_rule() {
@@ -304,8 +304,8 @@ mod test {
     #[test]
     fn test_stack_merge() {
         {
-            let mut stack = ParamStack::from(vec![Param::Const(ValType::I32), Param::Const(ValType::I64)]);
-            let mut ft = ParamFuncType {
+            let stack = ParamStack::from(vec![Param::Const(ValType::I32), Param::Const(ValType::I64)]);
+            let ft = ParamFuncType {
                 parameters: vec![Param::Const(ValType::I32), Param::Const(ValType::I64)],
                 results: vec![],
             };
@@ -314,8 +314,8 @@ mod test {
         }
 
         {
-            let mut stack = ParamStack::from(vec![Param::T(0), Param::Const(ValType::I64)]);
-            let mut ft = ParamFuncType {
+            let stack = ParamStack::from(vec![Param::T(0), Param::Const(ValType::I64)]);
+            let ft = ParamFuncType {
                 parameters: vec![Param::Const(ValType::I32), Param::Const(ValType::I64)],
                 results: vec![],
             };
@@ -324,8 +324,8 @@ mod test {
         }
 
         {
-            let mut stack = ParamStack::from(vec![Param::T(0), Param::Const(ValType::I32)]);
-            let mut ft = ParamFuncType {
+            let stack = ParamStack::from(vec![Param::T(0), Param::Const(ValType::I32)]);
+            let ft = ParamFuncType {
                 parameters: vec![Param::Const(ValType::I32)],
                 results: vec![],
             };
@@ -334,8 +334,8 @@ mod test {
         }
 
         {
-            let mut stack = ParamStack::from(vec![Param::T(0), Param::T(0)]);
-            let mut ft = ParamFuncType {
+            let stack = ParamStack::from(vec![Param::T(0), Param::T(0)]);
+            let ft = ParamFuncType {
                 parameters: vec![Param::Const(ValType::I32)],
                 results: vec![],
             };

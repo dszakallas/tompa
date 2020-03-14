@@ -1,9 +1,9 @@
 use std::collections::HashSet;
-use std::ops::{Add, DerefMut};
+use std::ops::{Add};
 
 use im_rc;
 
-use crate::syntax::instructions::*;
+
 use crate::syntax::modules::*;
 use crate::syntax::types::*;
 use crate::typing::types::*;
@@ -388,7 +388,7 @@ rule!(FunctionRule: Function => FuncType, function_rule);
 
 fn function_rule(
     syntax: &Function,
-    rule: &FunctionRule,
+    _rule: &FunctionRule,
     context: &Context,
 ) -> WrappedResult<FuncType> {
     let (tpe, fn_context) = check_function_context(&syntax.type_idx, &syntax.locals, context)?;
@@ -398,21 +398,21 @@ fn function_rule(
 
 rule!(TableRule: Table => TableType, table_rule);
 
-fn table_rule(syntax: &Table, rule: &TableRule, context: &Context) -> WrappedResult<TableType> {
+fn table_rule(syntax: &Table, _rule: &TableRule, context: &Context) -> WrappedResult<TableType> {
     TableTypeRule {}.check(&syntax.tpe, &context)?;
     Ok(syntax.tpe.clone())
 }
 
 rule!(MemRule: Mem => MemType, mem_rule);
 
-fn mem_rule(syntax: &Mem, rule: &MemRule, context: &Context) -> WrappedResult<MemType> {
+fn mem_rule(syntax: &Mem, _rule: &MemRule, context: &Context) -> WrappedResult<MemType> {
     MemTypeRule {}.check(&syntax.tpe, &context)?;
     Ok(syntax.tpe.clone())
 }
 
 rule!(GlobalRule: Global => GlobalType, global_rule);
 
-fn global_rule(syntax: &Global, rule: &GlobalRule, context: &Context) -> WrappedResult<GlobalType> {
+fn global_rule(syntax: &Global, _rule: &GlobalRule, context: &Context) -> WrappedResult<GlobalType> {
     GlobalTypeRule {}.check(&syntax.tpe, &context)?;
     ExprRule { parameters: vec![], results: vec![syntax.tpe.valtype], is_const: true }.check(&syntax.expr, context)?;
     Ok(syntax.tpe)
@@ -422,7 +422,7 @@ rule!(ElementSegmentRule: ElementSegment => (), element_segment_rule);
 
 fn element_segment_rule(
     syntax: &ElementSegment,
-    rule: &ElementSegmentRule,
+    _rule: &ElementSegmentRule,
     context: &Context,
 ) -> WrappedResult<()> {
     let k = context.tables.get(syntax.table as usize)?;
@@ -441,7 +441,7 @@ rule!(DataSegmentRule: DataSegment => (), data_segment_rule);
 
 fn data_segment_rule(
     syntax: &DataSegment,
-    rule: &DataSegmentRule,
+    _rule: &DataSegmentRule,
     context: &Context,
 ) -> WrappedResult<()> {
     let k = context.mems.get(syntax.data as usize)?;
@@ -454,7 +454,7 @@ fn data_segment_rule(
 
 rule!(StartRule: Start => (), start_rule);
 
-fn start_rule(syntax: &Start, rule: &StartRule, context: &Context) -> WrappedResult<()> {
+fn start_rule(syntax: &Start, _rule: &StartRule, context: &Context) -> WrappedResult<()> {
     let k = context.funcs.get(syntax.0 as usize)?;
 
     if *k
@@ -471,7 +471,7 @@ fn start_rule(syntax: &Start, rule: &StartRule, context: &Context) -> WrappedRes
 
 macro_rules! derive_export_rule {
     ($rulename:ident: $syntax:ty => $tpe:ident, $prop:ident) => {
-        rule!($rulename: $syntax => $tpe, |syntax: &$syntax, rule: &$rulename, context: &Context| {
+        rule!($rulename: $syntax => $tpe, |syntax: &$syntax, _rule: &$rulename, context: &Context| {
             let tpe = context.$prop.get(syntax.0 as usize)?;
             Ok($tpe(tpe.clone()))
         });
@@ -485,7 +485,7 @@ derive_export_rule!(ExportGlobalRule: ExternGlobal => ExternGlobalType, globals)
 
 rule!(ExportRule: Export => ExternType, export_rule);
 
-fn export_rule(syntax: &Export, rule: &ExportRule, context: &Context) -> WrappedResult<ExternType> {
+fn export_rule(syntax: &Export, _rule: &ExportRule, context: &Context) -> WrappedResult<ExternType> {
     match &syntax.expr {
         ExportDesc::Func(e) => Ok(ExternType::Func(ExportFuncRule {}.check(e, context)?)),
         ExportDesc::Table(e) => Ok(ExternType::Table(ExportTableRule {}.check(e, context)?)),
@@ -498,7 +498,7 @@ rule!(ImportFuncRule: ExternFunc => ExternFuncType, import_func_rule);
 
 fn import_func_rule(
     syntax: &ExternFunc,
-    rule: &ImportFuncRule,
+    _rule: &ImportFuncRule,
     context: &Context,
 ) -> WrappedResult<ExternFuncType> {
     let tpe = context.types.get(syntax.0 as usize)?;
@@ -507,7 +507,7 @@ fn import_func_rule(
 
 macro_rules! derive_import_rule {
     ($rulename:ident: $syntax:ty => $tpe:ident, $inner:tt) => {
-        rule!($rulename: $syntax => $tpe, |syntax: &$syntax, rule: &$rulename, context: &Context| {
+        rule!($rulename: $syntax => $tpe, |syntax: &$syntax, _rule: &$rulename, context: &Context| {
             $inner {}.check(syntax, context)?;
             Ok(syntax.clone())
         });
@@ -520,7 +520,7 @@ derive_import_rule!(ImportGlobalRule: ExternGlobalType => ExternGlobalType, Exte
 
 rule!(ImportRule: Import => ExternType, import_rule);
 
-fn import_rule(syntax: &Import, rule: &ImportRule, context: &Context) -> WrappedResult<ExternType> {
+fn import_rule(syntax: &Import, _rule: &ImportRule, context: &Context) -> WrappedResult<ExternType> {
     match &syntax.expr {
         ImportDesc::Func(e) => Ok(ExternType::Func(ImportFuncRule {}.check(e, context)?)),
         ImportDesc::Table(e) => Ok(ExternType::Table(ImportTableRule {}.check(e, context)?)),
@@ -533,7 +533,7 @@ rule!(ModuleRule: Module => (Vec<ExternType>, Vec<ExternType>), module_rule);
 
 fn module_rule(
     syntax: &Module,
-    rule: &ModuleRule,
+    _rule: &ModuleRule,
     _context: &Context,
 ) -> WrappedResult<(Vec<ExternType>, Vec<ExternType>)> {
     let mut ctx = Context::empty();

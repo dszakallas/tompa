@@ -1,28 +1,28 @@
-use std::convert::TryFrom;
-use std::ops::{Add, RangeFrom};
-use std::str::Chars;
 
-use im_rc;
-use lexical_core::{Float as LcFloat, Integer as LcInteger};
-use lexical_core::FromLexical;
+use std::ops::{RangeFrom};
+
+
+
+
+
 use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while, take_while1, take_while_m_n};
+use nom::bytes::complete::{tag};
 use nom::character::complete::{anychar, char, digit1, hex_digit1, not_line_ending};
 use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
-use nom::error::{ErrorKind, ParseError};
+use nom::error::{ParseError};
 use nom::lib::std::ops::{Range, RangeTo};
-use nom::multi::{fold_many0, many0, many1};
-use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
-use num::{Float, FromPrimitive, Num, Signed, Unsigned};
+use nom::multi::{many0, many1};
+use nom::sequence::{delimited, pair, preceded, terminated, tuple};
 
-use crate::syntax::instructions::{Block, IfElse, Instr, Loop};
-use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemType, Mut, TableType, ValType, MemArg};
-use std::fmt::Debug;
-use nom::Err::Error;
 
-use crate::format::text::parser;
-use crate::format::text::parser::lexical;
+
+use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemType, Mut, TableType, ValType};
+
+
+
+
+
 use crate::format::text::parser::lexical::ws;
 use crate::format::text::parser::AsStr;
 use crate::format::text::parser::lexical::AsChar;
@@ -145,7 +145,7 @@ fn functype<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, FuncType, E>
         + Compare<&'static str>,
         <I as InputIter>::Item: NomAsChar + AsChar,
         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-    map(block!(preceded(token(tag("func")), tuple((params, results)))), |((parameters, results))| {
+    map(block!(preceded(token(tag("func")), tuple((params, results)))), |(parameters, results)| {
         FuncType { parameters, results }
     })(i)
 }
@@ -169,7 +169,7 @@ fn param<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, ValType, E>
     block!(
         preceded(
             token(tag("param")),
-            map(tuple((opt(token(id)), token(valtype))), |(id, valtype)| valtype)
+            map(tuple((opt(token(id)), token(valtype))), |(_id, valtype)| valtype)
         )
     )(i)
 }
@@ -194,7 +194,7 @@ fn params<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, Vec<ValType>, E>
         preceded(
             token(tag("param")),
             alt((
-                map(tuple((token(id), token(valtype))), |(id, valtype)| vec![valtype]),
+                map(tuple((token(id), token(valtype))), |(_id, valtype)| vec![valtype]),
                 many1(token(valtype))
             ))
         ))(i)
@@ -239,7 +239,7 @@ fn results<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, Vec<ValType>, E
         preceded(
             token(tag("result")),
             alt((
-                map(tuple((token(id), token(valtype))), |(id, valtype)| vec![valtype]),
+                map(tuple((token(id), token(valtype))), |(_id, valtype)| vec![valtype]),
                 many1(token(valtype)),
             ))
         ))(i)
@@ -248,9 +248,9 @@ fn results<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, Vec<ValType>, E
 
 #[cfg(test)]
 mod test {
-    use nom::Err::Error;
-    use nom::error::{ErrorKind, VerboseError};
-    use nom::error::ErrorKind::Eof;
+    
+    use nom::error::{ErrorKind};
+    
 
     use super::*;
 

@@ -1,4 +1,4 @@
-use crate::syntax::types::*;
+
 
 use super::*;
 
@@ -175,7 +175,7 @@ fn limits_bound_rule(
 
 rule!(FuncTypeRule: FuncType => (), func_type_rule);
 
-fn func_type_rule(syntax: &FuncType, rule: &FuncTypeRule, context: &Context) -> WrappedResult<()> {
+fn func_type_rule(syntax: &FuncType, _rule: &FuncTypeRule, _context: &Context) -> WrappedResult<()> {
     if syntax.results.len() <= 1 {
         Ok(())
     } else {
@@ -187,7 +187,7 @@ rule!(TableTypeRule: TableType => (), table_type_rule);
 
 fn table_type_rule(
     syntax: &TableType,
-    rule: &TableTypeRule,
+    _rule: &TableTypeRule,
     context: &Context,
 ) -> WrappedResult<()> {
     LimitsBoundRule { bound: 1 << 16 }.check(&syntax.limits, context)?;
@@ -196,7 +196,7 @@ fn table_type_rule(
 
 rule!(MemTypeRule: MemType => (), mem_type_rule);
 
-fn mem_type_rule(syntax: &MemType, rule: &MemTypeRule, context: &Context) -> WrappedResult<()> {
+fn mem_type_rule(syntax: &MemType, _rule: &MemTypeRule, context: &Context) -> WrappedResult<()> {
     LimitsBoundRule { bound: 1 << 16 }.check(&syntax.limits, context)?;
     Ok(())
 }

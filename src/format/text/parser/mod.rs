@@ -1,26 +1,26 @@
 #![macro_use]
 
-use std::convert::TryFrom;
-use std::fmt::Debug;
-use std::ops::{Add, RangeFrom};
-use std::str::Chars;
+
+
+
+
 
 use im_rc;
-use lexical_core::{Float as LcFloat, Integer as LcInteger};
-use lexical_core::FromLexical;
-use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
-use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while, take_while1, take_while_m_n};
-use nom::character::complete::{anychar, char, digit1, hex_digit1, not_line_ending};
-use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
-use nom::Err::Error;
-use nom::error::{ErrorKind, ParseError};
-use nom::lib::std::ops::{Range, RangeTo};
-use nom::multi::{fold_many0, many0, many1};
-use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
-use num::{Float, FromPrimitive, Num, Signed, Unsigned};
 
-use crate::syntax::instructions::{Block, IfElse, Instr, Loop};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemArg, MemType, Mut, TableType, ValType};
 
 pub trait AsStr<'a> {

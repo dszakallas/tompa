@@ -3,7 +3,7 @@ use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::option::NoneError;
-use std::rc::Rc;
+
 
 use im_rc;
 
@@ -76,7 +76,6 @@ pub trait Type<S, T> {
 }
 
 macro_rules! rule {
-
     ($rulename:ident: $syntax:ty => $tpe:ty, $check:expr) => {
         rule!($rulename {}: $syntax => $tpe, $check);
     };
