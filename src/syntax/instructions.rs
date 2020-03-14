@@ -36,6 +36,9 @@ impl Const {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Unreachable {}
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Nop {}
+
 
 //#[derive(Copy, Clone, Debug, PartialEq)]
 //pub struct Unop {
@@ -78,6 +81,22 @@ pub struct IfElse {
     pub if_instrs: Vec<Instr>,
     pub else_instrs: Vec<Instr>,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Br {
+    pub labelidx: LabelIdx
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct BrIf {
+    pub labelidx: LabelIdx
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BrTable {
+    pub labelidxs: Vec<LabelIdx>,
+}
+
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Expr {

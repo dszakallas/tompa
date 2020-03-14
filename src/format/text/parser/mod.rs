@@ -1,25 +1,4 @@
-#![macro_use]
-
-
-
-
-
-
 use im_rc;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemArg, MemType, Mut, TableType, ValType};
 

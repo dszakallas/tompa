@@ -19,12 +19,7 @@ use nom::lib::std::ops::{Range, RangeTo};
 use nom::multi::{fold_many0, many0, many1};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
 
-
-#[macro_use]
-
 use crate::format::text::parser::AsStr;
-
-
 
 pub trait AsChar {
     /// Is a valid character in an identifier?

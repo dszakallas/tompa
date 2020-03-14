@@ -14,6 +14,7 @@ use super::instructions::*;
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::syntax::instructions::{Instr, Expr, Const};
 
     #[test]
     fn test_function_rule() {

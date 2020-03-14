@@ -12,9 +12,9 @@ use ena::unify::{UnificationTable, UnifyKey, EqUnifyValue, InPlace};
 
 use nom::lib::std::convert::TryFrom;
 
-rule!(LoadRule: Load => FuncType, load_rule);
+rule!(LoadRule: Load => ParamFuncType, load_rule);
 
-fn load_rule(syntax: &Load, _rule: &LoadRule, _context: &Context) -> WrappedResult<FuncType> {
+fn load_rule(syntax: &Load, _rule: &LoadRule, _context: &Context) -> WrappedResult<ParamFuncType> {
     let size = if let Some((size, _sx)) = syntax.storage_size {
         size / 8
     } else {
@@ -23,17 +23,17 @@ fn load_rule(syntax: &Load, _rule: &LoadRule, _context: &Context) -> WrappedResu
     if 1u32 << syntax.memarg.align > size {
         None?
     } else {
-        Ok(FuncType { parameters: vec![ValType::I32], results: vec![syntax.valtype] })
+        Ok(ParamFuncType { parameters: vec![Param::Const(ValType::I32)], results: vec![Param::Const(syntax.valtype)] })
     }
 }
 
-rule!(StoreRule: Store => FuncType, store_rule);
+rule!(StoreRule: Store => ParamFuncType, store_rule);
 
 fn store_rule(
     syntax: &Store,
     _rule: &StoreRule,
     _context: &Context,
-) -> WrappedResult<FuncType> {
+) -> WrappedResult<ParamFuncType> {
     let size = if let Some(size) = syntax.storage_size {
         size / 8
     } else {
@@ -42,21 +42,20 @@ fn store_rule(
     if 1u32 << syntax.memarg.align > size {
         None?
     } else {
-        Ok(FuncType { parameters: vec![ValType::I32, syntax.valtype], results: vec![] })
+        Ok(ParamFuncType { parameters: vec![Param::Const(ValType::I32), Param::Const(syntax.valtype)], results: vec![] })
     }
 }
 
 // TODO memory grow, size
 
 rule!(
-    ConstRule: Const => FuncType,
-    |syntax: &Const, _, _| Ok(FuncType { parameters: vec![], results: vec![syntax.valtype()] })
+    ConstRule: Const => ParamFuncType,
+    |syntax: &Const, _, _| Ok(ParamFuncType { parameters: vec![], results: vec![Param::Const(syntax.valtype())] })
 );
 
+rule!(InstrRule: Instr => ParamFuncType, instr_rule);
 
-rule!(InstrRule: Instr => FuncType, instr_rule);
-
-fn instr_rule(syntax: &Instr, _rule: &InstrRule, context: &Context) -> WrappedResult<FuncType> {
+fn instr_rule(syntax: &Instr, _rule: &InstrRule, context: &Context) -> WrappedResult<ParamFuncType> {
     Ok(match syntax {
         Instr::Const(s) => ConstRule {}.check(s, context)?,
         Instr::Load(s) => LoadRule {}.check(s, context)?,
@@ -66,36 +65,77 @@ fn instr_rule(syntax: &Instr, _rule: &InstrRule, context: &Context) -> WrappedRe
     })
 }
 
-rule!(ExprRule { parameters: Vec<ValType>, results: Vec<ValType>, is_const: bool }: Expr => FuncType, expr_rule);
+rule!(ExprRule { parameters: Vec<ValType>, results: Vec<ValType>, is_const: bool }: Expr => ParamFuncType, expr_rule);
 
-fn expr_rule(syntax: &Expr, rule: &ExprRule, context: &Context) -> WrappedResult<FuncType> {
+fn expr_rule(syntax: &Expr, rule: &ExprRule, context: &Context) -> WrappedResult<ParamFuncType> {
     check_instruction_seq(rule.parameters.clone(), rule.results.clone(), &syntax.instrs, &context, rule.is_const)
 }
 
-rule!(BlockRule: Block => FuncType, block_rule);
+rule!(NopRule: Nop => FuncType, |_, _, _| Ok(Default::default()));
 
-fn block_rule(syntax: &Block, rule: &BlockRule, context: &Context) -> WrappedResult<FuncType> {
-    let block_context =
+rule!(UnreachableRule: Unreachable => ParamFuncType, |_, _, _| Ok(ParamFuncType { parameters: vec![Param::Star], results: vec![Param::Star] }));
+
+rule!(BlockRule: Block => ParamFuncType, block_rule);
+
+fn block_rule(syntax: &Block, rule: &BlockRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    let inner_context =
         check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax, rule))?;
 
-    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.instrs, &block_context, false)
+    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.instrs, &inner_context, false)
+}
+
+rule!(LoopRule: Loop => ParamFuncType, loop_rule);
+
+fn loop_rule(syntax: &Loop, rule: &LoopRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    let inner_context =
+        check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax, rule))?;
+
+    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.instrs, &inner_context, false)
+}
+
+rule!(IfElseRule: IfElse => ParamFuncType, if_else_rule);
+
+fn if_else_rule(syntax: &IfElse, rule: &IfElseRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    let inner_context =
+        check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax, rule))?;
+
+    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.if_instrs, &inner_context, false)?;
+    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.else_instrs, &inner_context, false)
+}
+
+rule!(BrRule: Br => ParamFuncType, br_rule);
+
+fn br_rule(syntax: &Br, rule: &BrRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    let n = context.labels.len();
+    let i = syntax.labelidx as usize;
+    if i >= n {
+        Err(NoneError)?
+    }
+    let mut parameters = vec![Param::Star].into_iter().chain(
+        Vec::from_iter(context.labels[n - i - 1].map(|v| Param::Const(v)))
+    ).collect();
+
+    Ok(ParamFuncType { parameters, results: vec![Param::Star] })
 }
 
 // FIXME implement const constraint
-fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs: &Vec<Instr>, context: &Context, _is_const: bool) -> WrappedResult<FuncType> {
-    let mut param_stack = ParamStack::from(parameters);
+fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs: &Vec<Instr>, context: &Context, _is_const: bool) -> WrappedResult<ParamFuncType> {
+    let mut param_stack = ParamStack::from(parameters.clone());
 
     for instr in instrs.iter() {
         let ft = InstrRule {}.check(instr, &context)?;
         param_stack = param_stack.merge(ParamStack::from(ft))?;
     }
 
-    let ft = FuncType { parameters: results, results: vec![] };
+    let ft = FuncType { parameters: results.clone(), results: vec![] };
 
     param_stack = param_stack.merge(ParamStack::from(ft.clone()))?;
 
-    if param_stack.stack.is_empty() {
-        Ok(ft)
+    if param_stack.stack.is_empty() || param_stack.stack.len() == 1 && param_stack.stack[0] == StackSymbol::ZZ {
+        Ok(ParamFuncType {
+            parameters: parameters.into_iter().map(|v| Param::Const(v)).collect(),
+            results: results.into_iter().map(|v| Param::Const(v)).collect(),
+        })
     } else {
         Err(NoneError)?
     }
@@ -104,7 +144,8 @@ fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Param {
     Const(ValType),
-    T(u32)
+    T(u32),
+    Star,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -125,16 +166,17 @@ impl UnifyKey for UnifyValType {
 
 impl EqUnifyValue for ValType {}
 
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum Diff {
-    Add,
-    Rem
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct ParamStack {
-    stack: Vec<(UnifyValType, Diff)>,
+    stack: Vec<StackSymbol<UnifyValType>>,
     utable: UnificationTable<InPlace<UnifyValType>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum StackSymbol<T: Sized> {
+    Pos(T),
+    Neg(T),
+    ZZ,
 }
 
 impl From<Vec<ValType>> for ParamStack {
@@ -162,20 +204,30 @@ impl From<ParamFuncType> for ParamStack {
     fn from(pft: ParamFuncType) -> Self {
         let mut param_stack: ParamStack = Default::default();
         let mut remapping: HashMap<u32, UnifyValType> = Default::default();
-        let elems = pft.parameters.iter().rev().map(|i| (i, Diff::Rem)).chain(
-            pft.results.iter().map(|i| (i, Diff::Add))
+        let mut elems = pft.parameters.iter().rev().map(|i| (i, false)).chain(
+            pft.results.iter().map(|i| (i, true))
         );
 
-        for (elem, d) in elems {
-            let k = match elem {
-                Param::Const(v) => param_stack.utable.new_key(Some(*v)),
+        while let Some((elem, d)) = elems.next() {
+            let symbol = match elem {
+                Param::Const(v) => {
+                    let k = param_stack.utable.new_key(Some(*v));
+                    if d { StackSymbol::Pos(k) } else { StackSymbol::Neg(k) }
+                },
                 Param::T(v) => {
                     let k = remapping.get(&v).map_or_else(|| param_stack.utable.new_key(None), |v| *v);
                     remapping.insert(*v, k);
-                    k
+                    if d { StackSymbol::Pos(k) } else { StackSymbol::Neg(k) }
                 },
+                Param::Star => {
+                    if let Some((Param::Star, true)) = elems.next() {
+                        StackSymbol::ZZ
+                    } else {
+                        panic!("The only stack polymorphic functions supported are of the form [*, p0 .. pn] -> [*, r0 .. rm]")
+                    }
+                }
             };
-            param_stack.stack.push((k, d));
+            param_stack.stack.push(symbol);
         }
         param_stack
     }
@@ -185,14 +237,15 @@ impl TryFrom<ParamStack> for Vec<Param> {
     type Error = NoneError;
 
     fn try_from(mut value: ParamStack) -> Result<Self, Self::Error> {
-        value.stack.clone().into_iter().map(|(k, d)| {
-            if d != Diff::Add {
-                return Err(NoneError);
-            }
-            if let Some(v) = value.utable.probe_value(k) {
-                Ok(Param::Const(v))
+        value.stack.clone().into_iter().map(|symbol| {
+            if let StackSymbol::Pos(k) = symbol {
+                if let Some(v) = value.utable.probe_value(k) {
+                    Ok(Param::Const(v))
+                } else {
+                    Ok(Param::T(k.0))
+                }
             } else {
-                Ok(Param::T(k.0))
+                Err(NoneError)
             }
         }).collect()
     }
@@ -202,24 +255,31 @@ impl ParamStack {
     pub fn merge(mut self, mut other: ParamStack) -> Result<Self, NoneError> {
         let mut params_iter = other.stack.iter();
 
-        while let Some((param_k, d)) = params_iter.next() {
-            let p_val = other.utable.probe_value(*param_k);
-            match d {
-                Diff::Rem => {
-                    let (self_k, d1) = self.stack.pop()?;
-                    if d1 != Diff::Add {
-                        return Err(NoneError)
-                    }
-                    self.utable.unify_var_value(self_k, p_val).or_else(|_err| Err(NoneError))?;
-                    let self_val = self.utable.probe_value(self_k);
+        while let Some(param_symbol) = params_iter.next() {
+            match (param_symbol, self.stack.last()) {
+                (StackSymbol::Neg(param_k), Some(StackSymbol::Pos(self_k))) => {
+                    let p_val = other.utable.probe_value(*param_k);
+                    self.utable.unify_var_value(*self_k, p_val).or_else(|_err| Err(NoneError))?;
+                    let self_val = self.utable.probe_value(*self_k);
                     other.utable.unify_var_value(*param_k, self_val).or_else(|_err| Err(NoneError))?;
+                    self.stack.pop();
+                },
+                (StackSymbol::Neg(param_k), Some(StackSymbol::ZZ)) => {},
+                (StackSymbol::Pos(param_k), _) => {
+                    let p_val = other.utable.probe_value(*param_k);
+                    self.stack.push(StackSymbol::Pos(*param_k));
+                    self.utable.new_key(p_val);
                 }
-                Diff::Add => {
-                    self.stack.push((*param_k, Diff::Add));
-                    if p_val == None {
-                        self.utable.new_key(p_val);
-                    }
+                (StackSymbol::ZZ, _) => {
+                    self.stack.clear();
+                    self.stack.push(StackSymbol::ZZ);
+                    self.utable = Default::default();
                 }
+                _ => {
+                    println!("Premature end of stack");
+                    Err(NoneError)?
+                }
+
             }
         }
         Ok(self)
@@ -280,8 +340,6 @@ fn check_block_context(label: &Option<ValType>, context: &Context) -> Option<Con
 #[cfg(test)]
 mod test {
     use super::*;
-    
-    
 
     #[test]
     fn test_block_rule() {
@@ -289,7 +347,7 @@ mod test {
             .check(&Block { result: None, instrs: vec![], }, &Context::empty())
             .unwrap();
 
-        assert_eq!(t1, FuncType { parameters: vec![], results: vec![] });
+        assert_eq!(t1, ParamFuncType { parameters: vec![], results: vec![] });
 
         let t2 = BlockRule {}
             .check(
@@ -298,7 +356,7 @@ mod test {
             )
             .unwrap();
 
-        assert_eq!(t2, FuncType { parameters: vec![], results: vec![ValType::I64] });
+        assert_eq!(t2, ParamFuncType { parameters: vec![], results: vec![Param::Const(ValType::I64)] });
     }
 
     #[test]
@@ -309,8 +367,10 @@ mod test {
                 parameters: vec![Param::Const(ValType::I32), Param::Const(ValType::I64)],
                 results: vec![],
             };
+            let other = ParamStack::from(ft);
+            let merged = stack.merge(other).unwrap();
 
-            assert_eq!(Vec::try_from(stack.merge(ParamStack::from(ft)).unwrap()).unwrap(), vec![]);
+            assert_eq!(Vec::try_from(merged).unwrap(), vec![]);
         }
 
         {
@@ -342,50 +402,6 @@ mod test {
 
             assert_eq!(Vec::try_from(stack.merge(ParamStack::from(ft)).unwrap()).unwrap(), vec![Param::Const(ValType::I32)]);
         }
-
-
-
-
-
-
-//        {
-//            let stack: Stack = Default::default();
-//            let parameters = VecDeque::from(vec![]);
-//            let results = VecDeque::from(vec![VpValType::The(ValType::I64)]);
-//
-//            assert_eq!(
-//                stack.merge(SpFuncType::VpFuncType(VpFuncType { parameters, results })),
-//                Ok(Stack::from(vec![SpValType::One(VpValType::The(ValType::I64))]))
-//            );
-//        }
-//
-//        {
-//            let stack: Stack = Stack::from(vec![SpValType::One(VpValType::The(ValType::I32))]);
-//            let parameters = VecDeque::from(vec![VpValType::The(ValType::I32)]);
-//            let results = VecDeque::from(vec![VpValType::The(ValType::I64)]);
-//
-//            assert_eq!(
-//                stack.merge(SpFuncType::VpFuncType(VpFuncType { parameters, results })),
-//                Ok(Stack::from(vec![SpValType::One(VpValType::The(ValType::I64))]))
-//            );
-//
-//        }
-//
-//        {
-//            let stack: Stack = Stack::from(vec![SpValType::One(VpValType::The(ValType::I32))]);
-//            let parameters = VecDeque::from(vec![VpValType::T]);
-//            let results = VecDeque::from(vec![VpValType::The(ValType::I64)]);
-//
-//            assert_eq!(
-//                stack.merge(SpFuncType::VpFuncType(VpFuncType { parameters, results })),
-//                Ok(Stack::from(vec![SpValType::One(VpValType::The(ValType::I64))]))
-//            );
-//
-//        }
-////        let stack = Stack { inner: vec![SpValType::One(VpValType::The(ValType::I32))] };
-//        let parameters = VecDeque::from(vec![VpValType::The(ValType::I32)])
-//
-//        stack.merge(SpFuncType::VpFuncType(VpFuncType { parameters, results }))
     }
 }
 

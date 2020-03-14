@@ -32,7 +32,7 @@ pub struct MemArg {
     pub align: u32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct FuncType {
     pub parameters: Vec<ValType>,
     pub results: Vec<ValType>,
@@ -94,6 +94,8 @@ pub type FuncIdx = u32;
 pub type TableIdx = u32;
 
 pub type MemIdx = u32;
+
+pub type LabelIdx = u32;
 
 pub type GlobalIdx = u32;
 
