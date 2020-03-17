@@ -12,6 +12,7 @@ edition = "2018"
 [dependencies]
 im-rc = "13.0.0"
 nom = "5.0.1"
+nom_locate = "2.0.0"
 num = "0.2.0"
 ena = "0.13.1"
 lexical-core = { version = "0.6.0", features = ["radix"] }
