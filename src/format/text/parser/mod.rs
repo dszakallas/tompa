@@ -1,11 +1,14 @@
 use im_rc;
 
 use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemArg, MemType, Mut, TableType, ValType};
-
-pub trait AsStr<'a> {
-    #[inline]
-    fn as_str(self) -> &'a str;
-}
+use nom::error::{ParseError, ErrorKind};
+use std::ops::{RangeFrom, Try};
+use nom::{Slice, InputIter, InputLength, IResult};
+use std::option::NoneError;
+use crate::format::text::lexer::{Token, Num, LexerInput};
+use crate::format::text::lexer::keyword::Keyword;
+use nom::sequence::delimited;
+use crate::format::input::satisfies;
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct IdCtx {
@@ -19,45 +22,80 @@ pub struct IdCtx {
     pub typedefs: im_rc::Vector<FuncType>,
 }
 
-trait FromSigned {
-    type Repr;
-
-    #[inline]
-    fn get(r: Self::Repr) -> Self;
+pub trait ParserInput<'a, I: 'a>: Clone
++ PartialEq
++ Slice<RangeFrom<usize>>
++ InputIter<Item=&'a Token<I>>
++ InputLength {
+    type LexerInput;
+    type InputIterItem;
+    //type InputTakeAtPositionItem;
 }
 
-macro_rules! from_signed_impl {
-    ($($from:tt -> $to:tt),*) => {
-        $(
-            impl FromSigned for $to {
-                type Repr = $from;
-
-                fn get(r: Self::Repr) -> Self {
-                    r as Self
-                }
-            }
-        )*
-    }
+impl<'a, I1, I2: 'a> ParserInput<'a, I2> for I1
+    where
+        I1: Clone
+        + PartialEq
+        + Slice<RangeFrom<usize>>
+        + InputIter<Item=&'a Token<I2>>
+        + InputLength,
+        I2: LexerInput<'a>,
+{
+    type LexerInput = I2;
+    type InputIterItem = <Self as InputIter>::Item;
+    //type InputTakeAtPositionItem = <Self as InputTakeAtPosition>::Item;
 }
 
-from_signed_impl!(i8 -> u8, i16 -> u16, i32 -> u32, i64 -> u64, i128 -> u128);
-
-macro_rules! assign_input {
-    ($input:ident, $parser:expr) => {{
-        let (i, r) = $parser($input)?;
-        $input = i;
-        r
-    }};
+#[inline]
+pub fn keyword<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(keyword: Keyword) -> impl Fn(I1) -> IResult<I1, (), E> + 'a
+    where
+        I1: Clone
+        + PartialEq
+        + Slice<RangeFrom<usize>>
+        + InputIter<Item=&'a Token<I2>>
+        + InputLength
+{
+    satisfies(move |tok: &'a Token<_>| match tok {
+        Token::Keyword(_, kw) if *kw == keyword => Ok(()),
+        _ => Err(NoneError)
+    })
 }
 
-#[cfg(test)]
-impl<'a> AsStr<'a> for &'a str {
-    fn as_str(self) -> &'a str {
-        self
-    }
+#[inline]
+pub fn num<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, &'a Num<I2>, E>
+    where
+        I1: Clone
+        + PartialEq
+        + Slice<RangeFrom<usize>>
+        + InputIter<Item=&'a Token<I2>>
+        + InputLength
+{
+    satisfies(move |tok: &'a Token<I2>| match tok {
+        Token::Num(_, num) => Ok((num)),
+        _ => Err(NoneError)
+    })(i)
 }
+
+#[inline]
+pub fn block<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a, O: 'a, F: 'a>(parser: F) -> impl Fn(I1) -> IResult<I1, O, E> + 'a
+    where
+        I1: Clone
+        + PartialEq
+        + Slice<RangeFrom<usize>>
+        + InputIter<Item=&'a Token<I2>>
+        + InputLength,
+        F: Fn(I1) -> IResult<I1, O, E>
+{
+    delimited(
+        satisfies(move |tok: &'a Token<_>| if let Token::LPar(_) = tok { Ok(()) } else { Err(NoneError) }),
+        parser,
+        satisfies(move |tok: &'a Token<_>| if let Token::RPar(_) = tok { Ok(()) } else { Err(NoneError) }),
+    )
+}
+
+
 
 mod lexical;
 mod values;
 mod types;
-mod instructions;
+//mod instructions;

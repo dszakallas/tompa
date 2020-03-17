@@ -51,6 +51,8 @@ pub enum Instr {
     Const(Const),
     Load(Load),
     Store(Store),
+    Nop(Nop),
+    Unreachable(Unreachable),
     Block(Block),
     Loop(Loop),
     IfElse(IfElse),
@@ -94,11 +96,18 @@ pub struct BrIf {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BrTable {
-    pub labelidxs: Vec<LabelIdx>,
+    pub labelidxs: Vec<LabelIdx>
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Return {}
 
-#[derive(Clone, Debug, PartialEq, Default)]
-pub struct Expr {
-    pub instrs: Vec<Instr>,
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Call {
+    pub fidx: FuncIdx
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct CallIndirect {
+    pub tidx: TypeIdx
 }

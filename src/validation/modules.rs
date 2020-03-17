@@ -6,7 +6,7 @@ use im_rc;
 
 use crate::syntax::modules::*;
 use crate::syntax::types::*;
-use crate::typing::types::*;
+use crate::validation::types::*;
 
 use super::*;
 use super::instructions::*;
@@ -14,7 +14,7 @@ use super::instructions::*;
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::syntax::instructions::{Instr, Expr, Const};
+    use crate::syntax::instructions::{Instr, Const};
 
     #[test]
     fn test_function_rule() {
@@ -23,9 +23,7 @@ mod test {
                 &Function {
                     type_idx: 0,
                     locals: vec![],
-                    body: Expr {
-                        instrs: vec![Instr::Const(Const::I64(256))],
-                    },
+                    body: vec![Instr::Const(Const::I64(256))],
                 },
                 &Context {
                     types: im_rc::vector![FuncType {
@@ -56,7 +54,7 @@ mod test {
                 &Function {
                     type_idx: 0,
                     locals: vec![],
-                    body: Expr { instrs: vec![] },
+                    body: vec![],
                 },
                 &Context {
                     types: im_rc::vector![FuncType {
@@ -88,7 +86,7 @@ mod test {
                         elemtype: FuncRef {},
                     },
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
     }
@@ -105,7 +103,7 @@ mod test {
                         },
                     },
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
     }
@@ -115,30 +113,20 @@ mod test {
         GlobalRule {}
             .check(
                 &Global {
-                    tpe: GlobalType {
-                        mut_: Mut::Var,
-                        valtype: ValType::I32,
-                    },
-                    expr: Expr {
-                        instrs: vec![Instr::Const(Const::I64(256))],
-                    },
+                    tpe: GlobalType { mut_: Mut::Var, valtype: ValType::I32 },
+                    expr: vec![Instr::Const(Const::I64(256))],
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap_err();
 
         GlobalRule {}
             .check(
                 &Global {
-                    tpe: GlobalType {
-                        mut_: Mut::Var,
-                        valtype: ValType::I32,
-                    },
-                    expr: Expr {
-                        instrs: vec![Instr::Const(Const::I32(256))],
-                    },
+                    tpe: GlobalType { mut_: Mut::Var, valtype: ValType::I32 },
+                    expr: vec![Instr::Const(Const::I32(256))],
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
     }
@@ -149,9 +137,7 @@ mod test {
             .check(
                 &ElementSegment {
                     table: 0,
-                    offset: Expr {
-                        instrs: vec![Instr::Const(Const::I32(256))],
-                    },
+                    offset: vec![Instr::Const(Const::I32(256))],
                     init: vec![0],
                 },
                 &Context {
@@ -173,9 +159,7 @@ mod test {
             .check(
                 &ElementSegment {
                     table: 0,
-                    offset: Expr {
-                        instrs: vec![Instr::Const(Const::I32(256))],
-                    },
+                    offset: vec![Instr::Const(Const::I32(256))],
                     init: vec![0],
                 },
                 &Context {
@@ -198,9 +182,7 @@ mod test {
             .check(
                 &ElementSegment {
                     table: 0,
-                    offset: Expr {
-                        instrs: vec![Instr::Const(Const::I32(256))],
-                    },
+                    offset: vec![Instr::Const(Const::I32(256))],
                     init: vec![0],
                 },
                 &Context {
@@ -229,21 +211,10 @@ mod test {
             .check(
                 &DataSegment {
                     data: 0,
-                    offset: Expr {
-                        instrs: vec![Instr::Const(Const::I32(256))],
-                    },
+                    offset: vec![Instr::Const(Const::I32(256))],
                     init: vec![0],
                 },
-                &Context {
-                    types: im_rc::vector![],
-                    funcs: im_rc::vector![],
-                    tables: im_rc::vector![],
-                    mems: im_rc::vector![],
-                    globals: im_rc::vector![],
-                    labels: im_rc::vector![],
-                    locals: im_rc::vector![],
-                    ret: None,
-                },
+                &Default::default(),
             )
             .unwrap_err();
 
@@ -251,9 +222,7 @@ mod test {
             .check(
                 &DataSegment {
                     data: 0,
-                    offset: Expr {
-                        instrs: vec![Instr::Const(Const::I32(256))],
-                    },
+                    offset: vec![Instr::Const(Const::I32(256))],
                     init: vec![0],
                 },
                 &Context {
@@ -380,12 +349,14 @@ fn check_function_context(
             globals: context.globals.clone(),
             labels: fn_labels,
             locals: fn_locals,
-            ret: fn_ret,
+            ret: Some(fn_ret),
         },
     ))
 }
 
 rule!(FunctionRule: Function => FuncType, function_rule);
+
+use crate::validation::instructions::check_instruction_seq;
 
 fn function_rule(
     syntax: &Function,
@@ -393,7 +364,7 @@ fn function_rule(
     context: &Context,
 ) -> WrappedResult<FuncType> {
     let (tpe, fn_context) = check_function_context(&syntax.type_idx, &syntax.locals, context)?;
-    ExprRule { parameters: tpe.parameters.clone(), results: tpe.results.clone(), is_const: false }.check(&syntax.body, &fn_context)?;
+    check_instruction_seq(tpe.parameters.clone(), tpe.results.clone(), &syntax.body, &fn_context, true)?;
     Ok(tpe)
 }
 
@@ -415,7 +386,7 @@ rule!(GlobalRule: Global => GlobalType, global_rule);
 
 fn global_rule(syntax: &Global, _rule: &GlobalRule, context: &Context) -> WrappedResult<GlobalType> {
     GlobalTypeRule {}.check(&syntax.tpe, &context)?;
-    ExprRule { parameters: vec![], results: vec![syntax.tpe.valtype], is_const: true }.check(&syntax.expr, context)?;
+    check_instruction_seq(vec![], vec![syntax.tpe.valtype], &syntax.expr, context, true)?;
     Ok(syntax.tpe)
 }
 
@@ -434,7 +405,7 @@ fn element_segment_rule(
         context.funcs.get(*f as usize)?;
     }
 
-    ExprRule { parameters: vec![], results: vec![ValType::I32], is_const: true }.check(&syntax.offset, context)?;
+    check_instruction_seq(vec![], vec![ValType::I32], &syntax.offset, context, true)?;
     Ok(())
 }
 
@@ -449,7 +420,7 @@ fn data_segment_rule(
 
     MemTypeRule {}.check(k, context)?;
 
-    ExprRule { parameters: vec![], results: vec![ValType::I32], is_const: true }.check(&syntax.offset, context)?;
+    check_instruction_seq(vec![], vec![ValType::I32], &syntax.offset, context, true)?;
     Ok(())
 }
 
@@ -537,7 +508,7 @@ fn module_rule(
     _rule: &ModuleRule,
     _context: &Context,
 ) -> WrappedResult<(Vec<ExternType>, Vec<ExternType>)> {
-    let mut ctx = Context::empty();
+    let mut ctx: Context = Default::default();
 
     let mut global_ctx = ctx.clone();
 

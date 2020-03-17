@@ -44,7 +44,7 @@ impl From<TypeError> for TypeErrorWrapper {
 
 type WrappedResult<A> = Result<A, TypeErrorWrapper>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Context {
     types: im_rc::Vector<FuncType>,
     funcs: im_rc::Vector<FuncType>,
@@ -53,22 +53,7 @@ pub struct Context {
     globals: im_rc::Vector<GlobalType>,
     labels: im_rc::Vector<Option<ValType>>,
     locals: im_rc::Vector<ValType>,
-    ret: Option<ValType>,
-}
-
-impl Context {
-    pub fn empty() -> Context {
-        Context {
-            types: im_rc::vector![],
-            funcs: im_rc::vector![],
-            tables: im_rc::vector![],
-            mems: im_rc::vector![],
-            globals: im_rc::vector![],
-            labels: im_rc::vector![],
-            locals: im_rc::vector![],
-            ret: None,
-        }
-    }
+    ret: Option<Option<ValType>>,
 }
 
 pub trait Type<S, T> {

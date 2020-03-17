@@ -5,7 +5,7 @@ use super::types::*;
 pub struct Function {
     pub type_idx: TypeIdx,
     pub locals: Vec<ValType>,
-    pub body: Expr,
+    pub body: Vec<Instr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -21,7 +21,7 @@ pub struct Mem {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Global {
     pub tpe: GlobalType,
-    pub expr: Expr,
+    pub expr: Vec<Instr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,14 +68,14 @@ pub struct Import {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ElementSegment {
     pub table: TableIdx,
-    pub offset: Expr,
+    pub offset: Vec<Instr>,
     pub init: Vec<FuncIdx>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DataSegment {
     pub data: MemIdx,
-    pub offset: Expr,
+    pub offset: Vec<Instr>,
     pub init: Vec<u8>,
 }
 

@@ -1,12 +1,6 @@
 #![macro_use]
 
-
-
 use std::ops::{RangeFrom};
-
-
-
-
 
 use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
 use nom::branch::alt;
@@ -19,291 +13,102 @@ use nom::lib::std::ops::{Range, RangeTo};
 use nom::multi::{fold_many0, many0, many1};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
 
-use crate::format::text::parser::AsStr;
+use crate::format::text::lexer::{AsChar, Token, NumVariant, hex_num, NumParts, dec_num, AsStr, hex_num_digits};
+use crate::format::text::lexer::num;
+use crate::format::input::{Input, pred};
+use nom::lib::std::option::NoneError;
+use crate::format::input::satisfies;
 
-pub trait AsChar {
-    /// Is a valid character in an identifier?
-    #[inline]
-    fn is_idchar(self) -> bool;
+use crate::format::text::lexer::LexerInput;
 
-    #[inline]
-    fn is_idcontrol(self) -> bool;
-
-    /// Is a valid standalone character in a string?
-    #[inline]
-    fn is_strchar(self) -> bool;
-
-    #[inline]
-    fn as_hex_digit(self) -> u8;
-
-    #[inline]
-    fn as_dec_digit(self) -> u8;
-}
-
-impl AsChar for char {
-    fn is_idchar(self) -> bool {
-        self.is_alphanumeric() || self.is_idcontrol()
-    }
-
-    fn is_idcontrol(self) -> bool {
-        self.is_ascii()
-            && match self as u8 {
-            b'!'
-            | b'#'..=b'\''
-            | b'*'..=b'/'
-            | b':'
-            | b'<'..=b'@'
-            | b'\\'
-            | b'^'..=b'`'
-            | b'|'
-            | b'~' => true,
-            _ => false,
-        }
-    }
-
-    fn is_strchar(self) -> bool {
-        let ch = self as u32;
-        ch >= 0x20 && ch != 0x22 && ch != 0x5C && ch != 0x7F
-    }
-
-    fn as_hex_digit(self) -> u8 {
-        match self {
-            'a'..='f' => 10u8 + self as u8 - 'a' as u8,
-            'A'..='F' => 10u8 + self as u8 - 'A' as u8,
-            '0'..='9' => self as u8 - '0' as u8,
-            _ => panic!("Not a hexadecimal digit")
-        }
-    }
-
-    fn as_dec_digit(self) -> u8 {
-        match self {
-            '0'..='9' => self as u8 - '0' as u8,
-            _ => panic!("Not a decimal digit")
-        }
-    }
-}
-
-impl<'a> AsChar for &'a char {
-    fn is_idchar(self) -> bool {
-        self.is_alphanumeric() || self.is_idcontrol()
-    }
-
-    fn is_idcontrol(self) -> bool {
-        (*self).is_idcontrol()
-    }
-
-    fn is_strchar(self) -> bool {
-        (*self).is_strchar()
-    }
-
-    fn as_hex_digit(self) -> u8 {
-        (*self).as_hex_digit()
-    }
-
-    fn as_dec_digit(self) -> u8 {
-        (*self).as_dec_digit()
-    }
-}
-
-#[derive(Clone, PartialEq, Debug)]
-struct LineComment<'a>(&'a str);
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-struct BlockComment;
+use std::convert::TryFrom;
 
 #[inline]
-fn linecomment<'a, I: 'a, E: ParseError<I>>(i: I) -> IResult<I, LineComment<'a>, E>
-    where
-        I: Clone
-        + InputTake
-        + InputLength
-        + InputIter
-        + Compare<&'static str>
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + Slice<Range<usize>>
-        + Slice<RangeTo<usize>>
-        + AsStr<'a>,
-        <I as InputIter>::Item: NomAsChar {
-    map(preceded(tag(";;"), not_line_ending), |tag: I| LineComment(tag.as_str()))(i)
+pub fn parsed_string<'a, I: 'a + LexerInput<'a>, E: ParseError<I> + 'a, Item>(i: I) -> IResult<I, String, E> {
+    let (mut i, _) = char('\"')(i)?;
+    let mut out = String::new();
+    loop {
+        let str = assign_input!(i, take_while(|c: <I as InputTakeAtPosition>::Item| c.is_strchar()));
+        out += str.as_str();
+        let c = assign_input!(i, alt((char('\\'), char('\"'))));
+        if c == '\"' {
+            break;
+        } else {
+            let parse_escape = alt::<I, _, _, _>((
+                value('\t', char('t')),
+                value('\n', char('n')),
+                value('\r', char('r')),
+                value('\"', char('\"')),
+                value('\'', char('\'')),
+                value('\\', char('\\')),
+                map_res(
+                    delimited(tag("u{"), hex_num_digits, tag("}")),
+                    |parts: Vec<I>| {
+                        let cp = parts.into_iter().map(|i| i.as_str()).collect::<Vec<&str>>().join("");
+                        let parsed = u32::from_str_radix(cp.as_str(), 16).map_err(|_| ())?;
+                        let res = char::try_from(parsed).map_err(|_| ())?;
+                        Result::<char, ()>::Ok(res)
+                    },
+                ),
+                map_res(
+                    take_while_m_n::<_, I, _>(2, 2, |c: <I as InputIter>::Item| c.is_hex_digit()),
+                    |d: I| {
+                        Result::<char, ()>::Ok(char::from(
+                            u8::from_str_radix(d.as_str(), 16).map_err(|_| ())?,
+                        ))
+                    },
+                ),
+            ));
+            let c = assign_input!(i, parse_escape);
+            out.push(c);
+        }
+    }
+    Ok((i, out))
 }
 
 #[inline]
-fn blockcomment<'a, I: 'a, E: ParseError<I>>(i: I) -> IResult<I, BlockComment, E>
-    where
-        I: Clone
-        + InputTake
-        + InputLength
-        + InputIter
-        + Compare<&'static str>
-        + Slice<RangeFrom<usize>>,
-        <I as InputIter>::Item: NomAsChar, {
-    let (mut mut_i, _) = tag("(;")(i)?;
-
-    let mut lvl = 1u32;
-
-    while lvl > 0 {
-        let (first_i, first_c) = anychar(mut_i.clone())?;
-        match first_c {
-            ';' => {
-                if let Ok((out_i, _)) = char::<I, E>(')')(first_i.clone()) {
-                    lvl -= 1;
-                    mut_i = out_i;
-                } else {
-                    mut_i = first_i;
-                }
-            }
-            '(' => {
-                if let Ok((in_i, _)) = char::<I, E>(';')(first_i.clone()) {
-                    lvl += 1;
-                    mut_i = in_i;
-                } else {
-                    mut_i = first_i;
-                }
-            }
-            _ => {
-                mut_i = first_i;
-            }
-        }
-    }
-    Ok((mut_i, BlockComment))
-}
-
-#[inline]
-pub fn ws<'a, I: 'a, E: ParseError<I>>(i: I) -> IResult<I, (), E>
-    where
-        I: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + Slice<Range<usize>>
-        + Slice<RangeTo<usize>>
-        + InputIter
-        + InputLength
-        + InputTake
-        + AsStr<'a>
-        + Compare<&'static str>,
-        <I as InputIter>::Item: NomAsChar {
+pub fn parsed_uxx<'a, I: 'a + LexerInput<'a>, E: ParseError<I> + 'a, Out: num::Unsigned>(i: I) -> IResult<I, Out, E> {
     alt((
-        value((), char('\t')),
-        value((), char('\r')),
-        value((), char('\n')),
-        value((), char(' ')),
-        value((), linecomment),
-        value((), blockcomment)
+        map_res(hex_num, |parts| { parts.try_parse_integral::<Out>(16) }),
+        map_res(dec_num, |parts| { parts.try_parse_integral::<Out>(10) })
     ))(i)
-}
-
-#[inline]
-pub fn token<'a, I: 'a, E: ParseError<I> + 'a, F: 'a, O: 'a>(parser: F) -> impl Fn(I) -> IResult<I, O, E> + 'a
-    where
-        I: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + Slice<Range<usize>>
-        + Slice<RangeTo<usize>>
-        + InputIter
-        + InputLength
-        + InputTakeAtPosition
-        + InputTake
-        + AsStr<'a>
-        + Compare<&'static str>,
-        <I as InputIter>::Item: NomAsChar + AsChar,
-        <I as InputTakeAtPosition>::Item: AsChar,
-        F: Fn(I) -> IResult<I, O, E>, {
-    terminated(parser, terminated(peek(not(idchar)), alt((
-        value((), many0(ws)),
-        value((), peek(alt((char('('), char(')')))))
-    ))))
-}
-
-#[inline]
-pub fn idchar<'a, I: 'a, E: ParseError<I>>(i: I) -> IResult<I, &'a str, E>
-    where
-        I: InputIter + InputTakeAtPosition + AsStr<'a>,
-        <I as InputIter>::Item: AsChar,
-        <I as InputTakeAtPosition>::Item: AsChar,
-{
-    let (i, res) = take_while1(AsChar::is_idchar)(i)?;
-    Ok((i, res.as_str()))
-}
-
-macro_rules! block {
-    ($parser:expr) => {
-        delimited(
-              terminated(char('('), many0(ws)),
-              $parser,
-              terminated(char(')'), many0(ws))
-        )
-    };
-    ($parser:expr, $($parsers:expr),*) => {
-        delimited(
-              terminated(char('('), many0(ws)),
-              tuple(($parser, $($parsers),*)),
-              terminated(char(')'), many0(ws))
-        )
-    };
 }
 
 #[cfg(test)]
 mod test {
-    
-    use nom::error::{ErrorKind};
-    
-
+    use nom::error::{ErrorKind, VerboseError, convert_error};
     use super::*;
 
     type FastError<T> = (T, ErrorKind);
 
-    #[test]
-    fn test_idchar() {
-        assert_eq!(
-            idchar::<&str, FastError<&str>>("de432#@ b"),
-            Ok((" b", "de432#@"))
-        );
+    macro_rules! parsed_to_end {
+       ($p: expr, $str: expr) => {
+           terminated::<&str, _, _, FastError<&str>, _, _>($p, not(anychar))($str)
+       };
     }
 
     #[test]
-    fn test_linecomment() {
+    fn test_parsed_string() {
         assert_eq!(
-            linecomment::<&str, FastError<&str>>(";;comment"),
-            Ok(("", LineComment::<'static>("comment")))
+            parsed_string::<_, FastError<&str>, char>("\"Lorem ipsum dolor sit amet\""),
+            Ok(("", "Lorem ipsum dolor sit amet".to_owned()))
         );
+        parsed_string::<_, FastError<&str>, char>("\"Lorem").unwrap_err();
         assert_eq!(
-            linecomment::<&str, FastError<&str>>(";;comment\nnot comment"),
-            Ok(("\nnot comment", LineComment::<'static>("comment")))
+            parsed_string::<_, FastError<&str>, char>(
+                "\"ASCII: \\42, TAB: \\t, CRLF: \\r\\n, Unicode: \\u{05d0}\""
+            ),
+            Ok(("", "ASCII: B, TAB: \t, CRLF: \r\n, Unicode: א".to_owned()))
         );
+        parsed_string::<_, FastError<&str>, char>("\"\\uinvalid\"").unwrap_err();
+        parsed_string::<_, FastError<&str>, char>("\"\\q\"").unwrap_err();
     }
 
-    #[test]
-    fn test_blockcomment() {
-        assert_eq!(
-            blockcomment::<&str, FastError<&str>>("(;;)"),
-            Ok(("", BlockComment))
-        );
-        assert_eq!(
-            blockcomment::<&str, FastError<&str>>("(;(;;);)"),
-            Ok(("", BlockComment))
-        );
-        assert_eq!(
-            blockcomment::<&str, FastError<&str>>("(;;((;a;);)"),
-            Ok(("", BlockComment))
-        );
-        assert_eq!(
-            blockcomment::<&str, FastError<&str>>("(;;((;a;););)"),
-            Ok((";)", BlockComment))
-        );
-        blockcomment::<&str, FastError<&str>>("(;").unwrap_err();
-    }
 
-    #[test]
-    fn test_token() {
-        assert_eq!(
-            token(tag::<'static, &str, &str, FastError<&str>>("func"))("func("),
-            Ok(("(", "func"))
-        );
-        assert_eq!(
-            token(tag::<'static, &str, &str, FastError<&str>>("mem"))("mem;;comment\n)"),
-            Ok((")", "mem"))
-        );
-    }
+
+    // #[test]
+    // fn test_text() {
+    //     let mut parsed_to_end!(text, "(i32.const 42)//a comment\n$my_id \"string\"  ")
+    //     text()
+    // }
 }

@@ -1,16 +1,9 @@
 use std::iter::FromIterator;
-
-
 use crate::syntax::instructions::*;
-
-
 use super::*;
-use nom::lib::std::collections::{HashMap};
-
+use std::collections::{HashMap};
 use ena::unify::{UnificationTable, UnifyKey, EqUnifyValue, InPlace};
-
-
-use nom::lib::std::convert::TryFrom;
+use std::convert::TryFrom;
 
 rule!(LoadRule: Load => ParamFuncType, load_rule);
 
@@ -23,7 +16,7 @@ fn load_rule(syntax: &Load, _rule: &LoadRule, _context: &Context) -> WrappedResu
     if 1u32 << syntax.memarg.align > size {
         None?
     } else {
-        Ok(ParamFuncType { parameters: vec![Param::Const(ValType::I32)], results: vec![Param::Const(syntax.valtype)] })
+        Ok(ParamFuncType { parameters: vec![ParamType::Const(ValType::I32)], results: vec![ParamType::Const(syntax.valtype)] })
     }
 }
 
@@ -42,7 +35,7 @@ fn store_rule(
     if 1u32 << syntax.memarg.align > size {
         None?
     } else {
-        Ok(ParamFuncType { parameters: vec![Param::Const(ValType::I32), Param::Const(syntax.valtype)], results: vec![] })
+        Ok(ParamFuncType { parameters: vec![ParamType::Const(ValType::I32), ParamType::Const(syntax.valtype)], results: vec![] })
     }
 }
 
@@ -50,7 +43,7 @@ fn store_rule(
 
 rule!(
     ConstRule: Const => ParamFuncType,
-    |syntax: &Const, _, _| Ok(ParamFuncType { parameters: vec![], results: vec![Param::Const(syntax.valtype())] })
+    |syntax: &Const, _, _| Ok(ParamFuncType { parameters: vec![], results: vec![ParamType::Const(syntax.valtype())] })
 );
 
 rule!(InstrRule: Instr => ParamFuncType, instr_rule);
@@ -60,20 +53,20 @@ fn instr_rule(syntax: &Instr, _rule: &InstrRule, context: &Context) -> WrappedRe
         Instr::Const(s) => ConstRule {}.check(s, context)?,
         Instr::Load(s) => LoadRule {}.check(s, context)?,
         Instr::Store(s) => StoreRule {}.check(s, context)?,
+        Instr::Nop(s) => NopRule {}.check(s, context)?,
+        Instr::Unreachable(s) => UnreachableRule {}.check(s, context)?,
         Instr::Block(s) => BlockRule {}.check(s, context)?,
-        _ => unimplemented!()
+        Instr::Loop(s) => LoopRule {}.check(s, context)?,
+        Instr::IfElse(s) => IfElseRule {}.check(s, context)?,
     })
 }
 
-rule!(ExprRule { parameters: Vec<ValType>, results: Vec<ValType>, is_const: bool }: Expr => ParamFuncType, expr_rule);
+rule!(NopRule: Nop => ParamFuncType, |_, _, _| Ok(Default::default()));
 
-fn expr_rule(syntax: &Expr, rule: &ExprRule, context: &Context) -> WrappedResult<ParamFuncType> {
-    check_instruction_seq(rule.parameters.clone(), rule.results.clone(), &syntax.instrs, &context, rule.is_const)
-}
-
-rule!(NopRule: Nop => FuncType, |_, _, _| Ok(Default::default()));
-
-rule!(UnreachableRule: Unreachable => ParamFuncType, |_, _, _| Ok(ParamFuncType { parameters: vec![Param::Star], results: vec![Param::Star] }));
+rule!(
+    UnreachableRule: Unreachable => ParamFuncType,
+    |_, _, _| Ok(ParamFuncType { parameters: vec![ParamType::Star], results: vec![ParamType::Star] })
+);
 
 rule!(BlockRule: Block => ParamFuncType, block_rule);
 
@@ -105,36 +98,119 @@ fn if_else_rule(syntax: &IfElse, rule: &IfElseRule, context: &Context) -> Wrappe
 
 rule!(BrRule: Br => ParamFuncType, br_rule);
 
-fn br_rule(syntax: &Br, rule: &BrRule, context: &Context) -> WrappedResult<ParamFuncType> {
+fn br_rule(syntax: &Br, _rule: &BrRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    let label_val = check_label(syntax.labelidx, context)?;
+    let parameters = vec![ParamType::Star].into_iter()
+        .chain(label_val.into_iter().map(|v| ParamType::Const(v)))
+        .collect();
+
+    Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
+}
+
+rule!(BrIfRule: BrIf => ParamFuncType, br_if_rule);
+
+fn br_if_rule(syntax: &BrIf, _rule: &BrIfRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    let label_val = check_label(syntax.labelidx, context)?;
+    let br_r = label_val.map(|v| ParamType::Const(v));
+    let parameters = br_r.iter().cloned()
+        .chain(vec![ParamType::Const(ValType::I32)].into_iter())
+        .collect();
+    let results = Vec::from_iter(br_r.into_iter());
+
+    Ok(ParamFuncType { parameters, results })
+}
+
+rule!(BrTableRule: BrTable => ParamFuncType, br_table_rule);
+
+fn br_table_rule(syntax: &BrTable, rule: &BrTableRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    let n = syntax.labelidxs.len();
+    if n == 0 {
+        return Err(NoneError)?
+    }
+    let label_val = check_label(syntax.labelidxs[n - 1], context)?;
+    for idx in &syntax.labelidxs[..n-1] {
+        let other_label_val = check_label(*idx, context)?;
+        if label_val != other_label_val {
+            return Err(NoneError)?
+        }
+    }
+    let br_r = label_val.map(|v| ParamType::Const(v));
+    let parameters = vec![ParamType::Star].into_iter()
+        .chain(br_r.into_iter())
+        .chain(vec![ParamType::Const(ValType::I32)])
+        .collect();
+    Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
+}
+
+rule!(ReturnRule: Return => ParamFuncType, return_rule);
+
+fn return_rule(syntax: &Return, rule: &ReturnRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    if let Some(ret) = context.ret {
+        let parameters = vec![ParamType::Star].into_iter()
+            .chain(ret.into_iter().map(|v| ParamType::Const(v)))
+            .collect();
+        return Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
+    };
+    Err(NoneError)?
+
+}
+
+rule!(CallRule: Call => ParamFuncType, call_rule);
+
+fn call_rule(syntax: &Call, rule: &CallRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    let n = context.funcs.len();
+    let i = syntax.fidx as usize;
+    if i >= n {
+        return Err(NoneError)?
+    }
+    Ok(ParamFuncType::from(context.funcs[i].clone()))
+}
+
+rule!(CallIndirectRule: CallIndirect => ParamFuncType, call_indirect_rule);
+
+fn call_indirect_rule(syntax: &CallIndirect, rule: &CallIndirectRule, context: &Context) -> WrappedResult<ParamFuncType> {
+    if context.tables.len() == 0 {
+        return Err(NoneError)?
+    }
+
+    let n = context.types.len();
+    let i = syntax.tidx as usize;
+    if i >= n {
+        return Err(NoneError)?
+    }
+
+    let mut res = ParamFuncType::from(context.types[i].clone());
+    res.parameters.push(ParamType::Const(ValType::I32));
+
+    Ok(res)
+}
+
+fn check_label(labelidx: LabelIdx, context: &Context) -> WrappedResult<Option<ValType>> {
     let n = context.labels.len();
-    let i = syntax.labelidx as usize;
+    let i = labelidx as usize;
     if i >= n {
         Err(NoneError)?
     }
-    let mut parameters = vec![Param::Star].into_iter().chain(
-        Vec::from_iter(context.labels[n - i - 1].map(|v| Param::Const(v)))
-    ).collect();
-
-    Ok(ParamFuncType { parameters, results: vec![Param::Star] })
+    Ok(context.labels[n - i - 1])
 }
 
 // FIXME implement const constraint
-fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs: &Vec<Instr>, context: &Context, _is_const: bool) -> WrappedResult<ParamFuncType> {
-    let mut param_stack = ParamStack::from(parameters.clone());
+pub(in crate::validation) fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs: &Vec<Instr>, context: &Context, _is_const: bool) -> WrappedResult<ParamFuncType> {
+    let mut param_stack = OpStack::from(parameters.clone());
 
     for instr in instrs.iter() {
         let ft = InstrRule {}.check(instr, &context)?;
-        param_stack = param_stack.merge(ParamStack::from(ft))?;
+        param_stack = param_stack.merge(OpStack::from(ft))?;
     }
 
     let ft = FuncType { parameters: results.clone(), results: vec![] };
 
-    param_stack = param_stack.merge(ParamStack::from(ft.clone()))?;
+    param_stack = param_stack.merge(OpStack::from(ft.clone()))?;
 
     if param_stack.stack.is_empty() || param_stack.stack.len() == 1 && param_stack.stack[0] == StackSymbol::ZZ {
         Ok(ParamFuncType {
-            parameters: parameters.into_iter().map(|v| Param::Const(v)).collect(),
-            results: results.into_iter().map(|v| Param::Const(v)).collect(),
+            parameters: parameters.into_iter().map(|v| ParamType::Const(v)).collect(),
+            results: results.into_iter().map(|v| ParamType::Const(v)).collect(),
         })
     } else {
         Err(NoneError)?
@@ -142,16 +218,29 @@ fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum Param {
+pub enum ParamType {
     Const(ValType),
     T(u32),
     Star,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct ParamFuncType {
-    parameters: Vec<Param>,
-    results: Vec<Param>,
+    parameters: Vec<ParamType>,
+    results: Vec<ParamType>,
+}
+
+impl From<FuncType> for ParamFuncType {
+    fn from(ft: FuncType) -> Self {
+        let mut pft: ParamFuncType = Default::default();
+        for vt in ft.parameters.iter() {
+            pft.parameters.push(ParamType::Const(*vt))
+        }
+        for vt in ft.results.iter() {
+            pft.results.push(ParamType::Const(*vt))
+        }
+        pft
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -167,7 +256,7 @@ impl UnifyKey for UnifyValType {
 impl EqUnifyValue for ValType {}
 
 #[derive(Clone, Debug, Default)]
-pub struct ParamStack {
+pub struct OpStack {
     stack: Vec<StackSymbol<UnifyValType>>,
     utable: UnificationTable<InPlace<UnifyValType>>,
 }
@@ -179,30 +268,30 @@ pub enum StackSymbol<T: Sized> {
     ZZ,
 }
 
-impl From<Vec<ValType>> for ParamStack {
+impl From<Vec<ValType>> for OpStack {
     fn from(vec: Vec<ValType>) -> Self {
-        Self::from( ParamFuncType { parameters: vec![], results: vec.into_iter().map(|p| Param::Const(p)).collect() })
+        Self::from( ParamFuncType { parameters: vec![], results: vec.into_iter().map(|p| ParamType::Const(p)).collect() })
     }
 }
 
-impl From<Vec<Param>> for ParamStack {
-    fn from(vec: Vec<Param>) -> Self {
+impl From<Vec<ParamType>> for OpStack {
+    fn from(vec: Vec<ParamType>) -> Self {
         Self::from( ParamFuncType { parameters: vec![], results: vec })
     }
 }
 
-impl From<FuncType> for ParamStack {
+impl From<FuncType> for OpStack {
     fn from(ft: FuncType) -> Self {
         Self::from(ParamFuncType {
-            parameters: ft.parameters.into_iter().map(|p| Param::Const(p)).collect(),
-            results: ft.results.into_iter().map(|p| Param::Const(p)).collect(),
+            parameters: ft.parameters.into_iter().map(|p| ParamType::Const(p)).collect(),
+            results: ft.results.into_iter().map(|p| ParamType::Const(p)).collect(),
         })
     }
 }
 
-impl From<ParamFuncType> for ParamStack {
+impl From<ParamFuncType> for OpStack {
     fn from(pft: ParamFuncType) -> Self {
-        let mut param_stack: ParamStack = Default::default();
+        let mut param_stack: OpStack = Default::default();
         let mut remapping: HashMap<u32, UnifyValType> = Default::default();
         let mut elems = pft.parameters.iter().rev().map(|i| (i, false)).chain(
             pft.results.iter().map(|i| (i, true))
@@ -210,17 +299,17 @@ impl From<ParamFuncType> for ParamStack {
 
         while let Some((elem, d)) = elems.next() {
             let symbol = match elem {
-                Param::Const(v) => {
+                ParamType::Const(v) => {
                     let k = param_stack.utable.new_key(Some(*v));
                     if d { StackSymbol::Pos(k) } else { StackSymbol::Neg(k) }
                 },
-                Param::T(v) => {
+                ParamType::T(v) => {
                     let k = remapping.get(&v).map_or_else(|| param_stack.utable.new_key(None), |v| *v);
                     remapping.insert(*v, k);
                     if d { StackSymbol::Pos(k) } else { StackSymbol::Neg(k) }
                 },
-                Param::Star => {
-                    if let Some((Param::Star, true)) = elems.next() {
+                ParamType::Star => {
+                    if let Some((ParamType::Star, true)) = elems.next() {
                         StackSymbol::ZZ
                     } else {
                         panic!("The only stack polymorphic functions supported are of the form [*, p0 .. pn] -> [*, r0 .. rm]")
@@ -233,16 +322,16 @@ impl From<ParamFuncType> for ParamStack {
     }
 }
 
-impl TryFrom<ParamStack> for Vec<Param> {
+impl TryFrom<OpStack> for Vec<ParamType> {
     type Error = NoneError;
 
-    fn try_from(mut value: ParamStack) -> Result<Self, Self::Error> {
+    fn try_from(mut value: OpStack) -> Result<Self, Self::Error> {
         value.stack.clone().into_iter().map(|symbol| {
             if let StackSymbol::Pos(k) = symbol {
                 if let Some(v) = value.utable.probe_value(k) {
-                    Ok(Param::Const(v))
+                    Ok(ParamType::Const(v))
                 } else {
-                    Ok(Param::T(k.0))
+                    Ok(ParamType::T(k.0))
                 }
             } else {
                 Err(NoneError)
@@ -251,8 +340,8 @@ impl TryFrom<ParamStack> for Vec<Param> {
     }
 }
 
-impl ParamStack {
-    pub fn merge(mut self, mut other: ParamStack) -> Result<Self, NoneError> {
+impl OpStack {
+    pub fn merge(mut self, mut other: OpStack) -> Result<Self, NoneError> {
         let mut params_iter = other.stack.iter();
 
         while let Some(param_symbol) = params_iter.next() {
@@ -286,42 +375,6 @@ impl ParamStack {
     }
 }
 
-//rule!(InstructionSeqRule { start_stack: Vec<ValType>, is_const: bool }: Vec<Instr> => FuncType, instruction_seq_rule);
-//
-//fn instruction_seq_rule(
-//    syntax: &Vec<Instr>,
-//    rule: &InstructionSeqRule,
-//    context: &Context,
-//) -> WrappedResult<FuncType> {
-//
-//
-//    let end_stack = check_instruction_seq(syntax, rule.start_stack.clone(), rule.is_const)?;
-//    Ok(FuncType { parameters: rule.start_stack.clone(), results: end_stack, })
-//}
-
-// fn check_expr(instr: &Vec<Instr>, is_const: bool, context: &Context, ) -> WrappedResult<Option<ValType>> {
-//     let seq = InstructionSeqRule { start_stack: vec![], is_const, }.check(instr, &context)?;
-//     if seq.results.len() <= 1 {
-//         Ok(seq.results.get(0).cloned())
-//     } else {
-//         None?
-//     }
-// }
-
-//fn check_instruction_seq(ft: FuncType, instr: &Vec<Instr>, is_const: bool) -> Option<Vec<ValType>> {
-//    //let mut param_stack = ParamStack::from
-//    for i in instr {
-//        match i {
-//            Instr::Const(Const::I32(x)) => stack.push(ValType::I32),
-//            Instr::Const(Const::I64(x)) => stack.push(ValType::I64),
-//            Instr::Const(Const::F32(x)) => stack.push(ValType::F32),
-//            Instr::Const(Const::F64(x)) => stack.push(ValType::F64),
-//            _ => unimplemented!()
-//        }
-//    }
-//    Some(stack)
-//}
-
 fn check_block_context(label: &Option<ValType>, context: &Context) -> Option<Context> {
     let mut labels = context.labels.clone();
     labels.push_back(label.clone());
@@ -344,7 +397,7 @@ mod test {
     #[test]
     fn test_block_rule() {
         let t1 = BlockRule {}
-            .check(&Block { result: None, instrs: vec![], }, &Context::empty())
+            .check(&Block { result: None, instrs: vec![], }, &Default::default())
             .unwrap();
 
         assert_eq!(t1, ParamFuncType { parameters: vec![], results: vec![] });
@@ -352,55 +405,55 @@ mod test {
         let t2 = BlockRule {}
             .check(
                 &Block { result: Some(ValType::I64), instrs: vec![Instr::Const(Const::I64(256))] },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
 
-        assert_eq!(t2, ParamFuncType { parameters: vec![], results: vec![Param::Const(ValType::I64)] });
+        assert_eq!(t2, ParamFuncType { parameters: vec![], results: vec![ParamType::Const(ValType::I64)] });
     }
 
     #[test]
     fn test_stack_merge() {
         {
-            let stack = ParamStack::from(vec![Param::Const(ValType::I32), Param::Const(ValType::I64)]);
+            let stack = OpStack::from(vec![ParamType::Const(ValType::I32), ParamType::Const(ValType::I64)]);
             let ft = ParamFuncType {
-                parameters: vec![Param::Const(ValType::I32), Param::Const(ValType::I64)],
+                parameters: vec![ParamType::Const(ValType::I32), ParamType::Const(ValType::I64)],
                 results: vec![],
             };
-            let other = ParamStack::from(ft);
+            let other = OpStack::from(ft);
             let merged = stack.merge(other).unwrap();
 
             assert_eq!(Vec::try_from(merged).unwrap(), vec![]);
         }
 
         {
-            let stack = ParamStack::from(vec![Param::T(0), Param::Const(ValType::I64)]);
+            let stack = OpStack::from(vec![ParamType::T(0), ParamType::Const(ValType::I64)]);
             let ft = ParamFuncType {
-                parameters: vec![Param::Const(ValType::I32), Param::Const(ValType::I64)],
+                parameters: vec![ParamType::Const(ValType::I32), ParamType::Const(ValType::I64)],
                 results: vec![],
             };
 
-            assert_eq!(Vec::try_from(stack.merge(ParamStack::from(ft)).unwrap()).unwrap(), vec![]);
+            assert_eq!(Vec::try_from(stack.merge(OpStack::from(ft)).unwrap()).unwrap(), vec![]);
         }
 
         {
-            let stack = ParamStack::from(vec![Param::T(0), Param::Const(ValType::I32)]);
+            let stack = OpStack::from(vec![ParamType::T(0), ParamType::Const(ValType::I32)]);
             let ft = ParamFuncType {
-                parameters: vec![Param::Const(ValType::I32)],
+                parameters: vec![ParamType::Const(ValType::I32)],
                 results: vec![],
             };
 
-            assert_eq!(Vec::try_from(stack.merge(ParamStack::from(ft)).unwrap()).unwrap(), vec![Param::T(0)]);
+            assert_eq!(Vec::try_from(stack.merge(OpStack::from(ft)).unwrap()).unwrap(), vec![ParamType::T(0)]);
         }
 
         {
-            let stack = ParamStack::from(vec![Param::T(0), Param::T(0)]);
+            let stack = OpStack::from(vec![ParamType::T(0), ParamType::T(0)]);
             let ft = ParamFuncType {
-                parameters: vec![Param::Const(ValType::I32)],
+                parameters: vec![ParamType::Const(ValType::I32)],
                 results: vec![],
             };
 
-            assert_eq!(Vec::try_from(stack.merge(ParamStack::from(ft)).unwrap()).unwrap(), vec![Param::Const(ValType::I32)]);
+            assert_eq!(Vec::try_from(stack.merge(OpStack::from(ft)).unwrap()).unwrap(), vec![ParamType::Const(ValType::I32)]);
         }
     }
 }

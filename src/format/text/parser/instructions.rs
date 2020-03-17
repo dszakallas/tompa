@@ -1,8 +1,6 @@
 
 use std::ops::{RangeFrom};
 
-
-
 use lexical_core::{Integer as LcInteger};
 
 use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
@@ -15,21 +13,15 @@ use nom::lib::std::ops::{Range, RangeTo};
 use nom::multi::{fold_many0, many0, many1};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
 
-
-
 use crate::format::text::parser::lexical::AsChar;
 use crate::syntax::instructions::{Block, IfElse, Instr, Loop, Load, Store};
 use crate::syntax::types::{ValType, MemArg, Sx};
 
-
 use crate::format::text::parser::IdCtx;
-use crate::format::text::parser::AsStr;
 use crate::format::text::parser::values::uxx;
 use crate::format::text::parser::lexical::token;
 use crate::format::text::parser::types::result;
 use crate::format::text::parser::values::id;
-
-
 
 #[inline]
 fn label<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, IdCtx, E>

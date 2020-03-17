@@ -1,5 +1,3 @@
-
-
 use super::*;
 
 #[cfg(test)]
@@ -9,37 +7,19 @@ mod test {
     #[test]
     fn test_limits_bound_rule() {
         LimitsBoundRule { bound: 1 << 16 }
-            .check(&Limits { min: 1, max: None }, &Context::empty())
+            .check(&Limits { min: 1, max: None }, &Default::default())
             .unwrap();
 
         LimitsBoundRule { bound: 1 << 8 }
-            .check(
-                &Limits {
-                    min: 1 << 16,
-                    max: None,
-                },
-                &Context::empty(),
-            )
+            .check(&Limits { min: 1 << 16, max: None }, &Default::default())
             .unwrap_err();
 
         LimitsBoundRule { bound: 1 << 16 }
-            .check(
-                &Limits {
-                    min: 1 << 16,
-                    max: Some(1 << 8),
-                },
-                &Context::empty(),
-            )
+            .check(&Limits { min: 1 << 16, max: Some(1 << 8) }, &Default::default())
             .unwrap_err();
 
         LimitsBoundRule { bound: 1 << 8 }
-            .check(
-                &Limits {
-                    min: 1 << 8,
-                    max: Some(1 << 16),
-                },
-                &Context::empty(),
-            )
+            .check(&Limits { min: 1 << 8, max: Some(1 << 16) }, &Default::default())
             .unwrap_err();
     }
 
@@ -51,7 +31,7 @@ mod test {
                     parameters: vec![],
                     results: vec![],
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
 
@@ -61,7 +41,7 @@ mod test {
                     parameters: vec![ValType::I32, ValType::F32],
                     results: vec![ValType::F64],
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
 
@@ -71,7 +51,7 @@ mod test {
                     parameters: vec![ValType::I32, ValType::F32],
                     results: vec![ValType::F64, ValType::F64],
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap_err();
     }
@@ -87,7 +67,7 @@ mod test {
                     },
                     elemtype: FuncRef {},
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
 
@@ -100,7 +80,7 @@ mod test {
                     },
                     elemtype: FuncRef {},
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap_err();
     }
@@ -115,7 +95,7 @@ mod test {
                         max: Some(1 << 16),
                     },
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
         MemTypeRule {}
@@ -126,7 +106,7 @@ mod test {
                         max: Some(1 << 17),
                     },
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap_err();
     }
@@ -139,7 +119,7 @@ mod test {
                     mut_: Mut::Const,
                     valtype: ValType::I32,
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
 
@@ -149,7 +129,7 @@ mod test {
                     mut_: Mut::Const,
                     valtype: ValType::F64,
                 },
-                &Context::empty(),
+                &Default::default(),
             )
             .unwrap();
     }
@@ -176,20 +156,12 @@ fn limits_bound_rule(
 rule!(FuncTypeRule: FuncType => (), func_type_rule);
 
 fn func_type_rule(syntax: &FuncType, _rule: &FuncTypeRule, _context: &Context) -> WrappedResult<()> {
-    if syntax.results.len() <= 1 {
-        Ok(())
-    } else {
-        None?
-    }
+    if syntax.results.len() <= 1 { Ok(()) } else { None? }
 }
 
 rule!(TableTypeRule: TableType => (), table_type_rule);
 
-fn table_type_rule(
-    syntax: &TableType,
-    _rule: &TableTypeRule,
-    context: &Context,
-) -> WrappedResult<()> {
+fn table_type_rule(syntax: &TableType, _rule: &TableTypeRule, context: &Context, ) -> WrappedResult<()> {
     LimitsBoundRule { bound: 1 << 16 }.check(&syntax.limits, context)?;
     Ok(())
 }
