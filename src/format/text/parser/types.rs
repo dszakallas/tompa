@@ -1,8 +1,6 @@
 
 use std::ops::{RangeFrom};
 
-
-
 use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice, Offset};
 use nom::branch::alt;
 use nom::bytes::complete::{tag};
@@ -10,30 +8,27 @@ use nom::character::complete::{anychar, char, digit1, hex_digit1, not_line_endin
 use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
 use nom::error::{ParseError};
 use nom::lib::std::ops::{Range, RangeTo};
-use nom::multi::{many0, many1};
+use nom::multi::{many0, many1, fold_many0};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple};
 
-use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemType, Mut, TableType, ValType};
+use crate::syntax::types::{FuncRef, GlobalType, Limits, MemType, Mut, TableType, ValType};
 
-//use crate::format::text::parser::lexical::ws;
-//use crate::format::text::parser::lexical::AsChar;
-//use crate::format::text::parser::lexical::token;
 use crate::format::text::parser::values::uxx;
-use crate::format::text::parser::{keyword, block};
-use crate::format::text::lexer::{Token, AsStr, AsChar};
+use crate::format::text::parser::{keyword, block, ParserInput, id};
+use crate::format::text::lexer::{Token, AsStr, AsChar, LexerInput};
 use crate::format::text::lexer::keyword::Keyword::*;
 
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct FuncType<'a, I> {
+    pub parameters: Vec<(Option<&'a I>, ValType)>,
+    pub results: Vec<ValType>,
+}
 
 #[inline]
-fn valtype<'a, I: 'a, E: ParseError<I> + 'a, I2: 'a>(i: I) -> IResult<I, ValType, E>
+pub fn valtype<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, ValType, E>
     where
-        I: Clone
-        + InputTake
-        + PartialEq
-        + InputLength
-        + InputIter<Item=&'a Token<I2>>
-        + Slice<RangeFrom<usize>>
-        + Compare<&'static str>, {
+        I1: ParserInput<'a, I2>,
+{
     alt((
         value(ValType::I32, keyword(I32)),
         value(ValType::I64, keyword(I64)),
@@ -43,15 +38,10 @@ fn valtype<'a, I: 'a, E: ParseError<I> + 'a, I2: 'a>(i: I) -> IResult<I, ValType
 }
 
 #[inline]
-fn globaltype<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, GlobalType, E>
+pub fn globaltype<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, GlobalType, E>
     where
-        I1: Clone
-        + InputTake
-        + PartialEq
-        + InputLength
-        + InputIter<Item=&'a Token<I2>>
-        + Slice<RangeFrom<usize>>
-        + Compare<&'static str>, {
+        I1: ParserInput<'a, I2>,
+{
     alt((
         map(valtype, |valtype| GlobalType { mut_: Mut::Const, valtype }),
         map(block(preceded(keyword(Mut), valtype)), |valtype| GlobalType { mut_: Mut::Var, valtype })
@@ -59,195 +49,85 @@ fn globaltype<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, 
 }
 
 #[inline]
-fn limits<'a,
-    I1: 'a, E1: ParseError<I1> + 'a,
-    I2: 'a, E2: ParseError<I2> + 'a,
-    Item2
->(i: I1) -> IResult<I1, Limits, E1>
+pub fn limits<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a, E2: ParseError<I2> + 'a>(i: I1) -> IResult<I1, Limits, E1>
     where
-        I1: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + InputIter<Item=&'a Token<I2>>
-        + InputLength,
-
-        I2: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + Slice<Range<usize>>
-        + Slice<RangeTo<usize>>
-        + InputIter<Item=Item2>
-        + InputLength
-        + InputTakeAtPosition<Item=Item2>
-        + InputTake
-        + Offset
-        + Compare<&'static str>
-        + AsStr<'a>,
-
-        Item2: NomAsChar + AsChar, {
+        I1: ParserInput<'a, I2>,
+        I2: LexerInput<'a>,
+{
     map(
-        pair(uxx::<u32, I1, E1, I2, E2, Item2>, opt(uxx::<u32, I1, E1, I2, E2, Item2>)),
+        pair(uxx::<u32, I1, E1, I2, E2>, opt(uxx::<u32, I1, E1, I2, E2>)),
         |(min, max)| Limits { min, max },
     )(i)
 }
 
-// #[inline]
-// fn tabletype<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, TableType, E>
-//     where
-//         I: Clone
-//         + PartialEq
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + InputIter
-//         + InputLength
-//         + InputTakeAtPosition
-//         + InputTake
-//         + AsStr<'a>
-//         + Compare<&'static str>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     map(
-//         terminated(limits, token(tag("funcref"))),
-//         |limits| TableType { limits, elemtype: FuncRef {} },
-//     )(i)
-// }
+#[inline]
+pub fn tabletype<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a, E2: ParseError<I2> + 'a>(i: I1) -> IResult<I1, TableType, E1>
+    where
+        I1: ParserInput<'a, I2>,
+        I2: LexerInput<'a>,
+{
+    map(
+        terminated(limits::<I1, E1, I2, E2>, keyword(Funcref)),
+        |limits| TableType { limits, elemtype: FuncRef {} },
+    )(i)
+}
 
-// #[inline]
-// fn memtype<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, MemType, E>
-//     where
-//         I: Clone
-//         + PartialEq
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + InputIter
-//         + InputLength
-//         + InputTakeAtPosition
-//         + InputTake
-//         + AsStr<'a>
-//         + Compare<&'static str>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     map(limits, |limits| MemType { limits })(i)
-// }
-//
-// #[inline]
-// fn functype<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, FuncType, E>
-//     where
-//         I: Clone
-//         + PartialEq
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + InputIter
-//         + InputLength
-//         + InputTakeAtPosition
-//         + InputTake
-//         + AsStr<'a>
-//         + Compare<&'static str>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     map(block!(preceded(token(tag("func")), tuple((params, results)))), |(parameters, results)| {
-//         FuncType { parameters, results }
-//     })(i)
-// }
-//
-// #[inline]
-// fn param<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, ValType, E>
-//     where
-//         I: Clone
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + PartialEq
-//         + InputIter
-//         + InputTake
-//         + InputLength
-//         + InputTakeAtPosition
-//         + Compare<&'static str>
-//         + AsStr<'a>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     block!(
-//         preceded(
-//             token(tag("param")),
-//             map(tuple((opt(token(id)), token(valtype))), |(_id, valtype)| valtype)
-//         )
-//     )(i)
-// }
-//
-// #[inline]
-// fn params<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, Vec<ValType>, E>
-//     where
-//         I: Clone
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + PartialEq
-//         + InputIter
-//         + InputTake
-//         + InputLength
-//         + InputTakeAtPosition
-//         + Compare<&'static str>
-//         + AsStr<'a>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     block!(
-//         preceded(
-//             token(tag("param")),
-//             alt((
-//                 map(tuple((token(id), token(valtype))), |(_id, valtype)| vec![valtype]),
-//                 many1(token(valtype))
-//             ))
-//         ))(i)
-// }
-//
-// #[inline]
-// pub fn result<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, ValType, E>
-//     where
-//         I: Clone
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + PartialEq
-//         + InputIter
-//         + InputTake
-//         + InputLength
-//         + InputTakeAtPosition
-//         + Compare<&'static str>
-//         + AsStr<'a>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     block!(preceded(token(tag("result")), token(valtype)))(i)
-// }
-//
-// #[inline]
-// fn results<'a, I: 'a, E: ParseError<I> + 'a>(i: I) -> IResult<I, Vec<ValType>, E>
-//     where
-//         I: Clone
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + PartialEq
-//         + InputIter
-//         + InputTake
-//         + InputLength
-//         + InputTakeAtPosition
-//         + Compare<&'static str>
-//         + AsStr<'a>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     block!(
-//         preceded(
-//             token(tag("result")),
-//             alt((
-//                 map(tuple((token(id), token(valtype))), |(_id, valtype)| vec![valtype]),
-//                 many1(token(valtype)),
-//             ))
-//         ))(i)
-// }
-//
+#[inline]
+pub fn memtype<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a, E2: ParseError<I2> + 'a>(i: I1) -> IResult<I1, MemType, E1>
+    where
+        I1: ParserInput<'a, I2>,
+        I2: LexerInput<'a>, {
+    map(limits::<I1, E1, I2, E2>, |limits| MemType { limits })(i)
+}
+
+#[inline]
+pub fn functype<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a, E2: ParseError<I2> + 'a>(i: I1) -> IResult<I1, FuncType<'a, I2>, E1>
+    where
+        I1: ParserInput<'a, I2>,
+        I2: LexerInput<'a>,
+{
+    map(block(preceded(keyword(Func), tuple((params::<I1, E1, I2>, results::<I1, E1, I2>)))), |(parameters, results)| {
+        FuncType::<'a, I2> { parameters, results }
+    })(i)
+}
+
+#[inline]
+pub fn params<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, Vec<(Option<&'a I2>, ValType)>, E1>
+    where
+        I1: ParserInput<'a, I2>,
+        I2: LexerInput<'a>, {
+
+    fold_many0(
+        block(preceded(keyword(Param), alt((
+            map(pair(id, valtype), |(id, valtype)| vec![(Some(id), valtype)]),
+            map(many0(valtype), |v| v.into_iter().map(|valtype| (None, valtype)).collect()),
+        )))),
+        Vec::new(),
+        |mut v, mut i| { v.append(&mut i); v }
+    )(i)
+}
+
+#[inline]
+pub fn results<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, Vec<ValType>, E1>
+    where
+        I1: ParserInput<'a, I2>,
+        I2: LexerInput<'a>, {
+
+    fold_many0(
+        block(preceded(keyword(Result), many0(valtype))),
+        Vec::new(),
+        |mut v, mut i| { v.append(&mut i); v }
+    )(i)
+}
+
+#[inline]
+pub fn resulttype<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, ValType, E1>
+    where
+        I1: ParserInput<'a, I2>,
+        I2: LexerInput<'a>, {
+    block(preceded(keyword(Result), valtype))(i)
+}
+
 //
 // #[cfg(test)]
 // mod test {

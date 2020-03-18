@@ -103,12 +103,4 @@ mod test {
         parsed_string::<_, FastError<&str>, char>("\"\\uinvalid\"").unwrap_err();
         parsed_string::<_, FastError<&str>, char>("\"\\q\"").unwrap_err();
     }
-
-
-
-    // #[test]
-    // fn test_text() {
-    //     let mut parsed_to_end!(text, "(i32.const 42)//a comment\n$my_id \"string\"  ")
-    //     text()
-    // }
 }

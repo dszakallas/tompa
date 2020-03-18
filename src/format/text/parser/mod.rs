@@ -10,6 +10,11 @@ use crate::format::text::lexer::keyword::Keyword;
 use nom::sequence::delimited;
 use crate::format::input::satisfies;
 
+mod lexical;
+mod values;
+mod types;
+mod instructions;
+
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct IdCtx {
     pub types: im_rc::Vector<Option<String>>,
@@ -77,6 +82,21 @@ pub fn num<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, &'a
 }
 
 #[inline]
+pub fn id<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, &'a I2, E>
+    where
+        I1: Clone
+        + PartialEq
+        + Slice<RangeFrom<usize>>
+        + InputIter<Item=&'a Token<I2>>
+        + InputLength
+{
+    satisfies(move |tok: &'a Token<I2>| match tok {
+        Token::Id(i) => Ok(i),
+        _ => Err(NoneError)
+    })(i)
+}
+
+#[inline]
 pub fn block<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a, O: 'a, F: 'a>(parser: F) -> impl Fn(I1) -> IResult<I1, O, E> + 'a
     where
         I1: Clone
@@ -92,10 +112,3 @@ pub fn block<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a, O: 'a, F: 'a>(parser: F
         satisfies(move |tok: &'a Token<_>| if let Token::RPar(_) = tok { Ok(()) } else { Err(NoneError) }),
     )
 }
-
-
-
-mod lexical;
-mod values;
-mod types;
-//mod instructions;

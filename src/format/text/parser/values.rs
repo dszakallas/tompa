@@ -90,7 +90,7 @@ pub fn string<'a,
 pub fn uxx<'a,
     Out: Unsigned,
     I1: 'a, E1: ParseError<I1> + 'a,
-    I2: 'a, E2: ParseError<I2> + 'a, Item2>(token_i: I1) -> IResult<I1, Out, E1>
+    I2: 'a, E2: ParseError<I2> + 'a>(token_i: I1) -> IResult<I1, Out, E1>
     where
         I1: ParserInput<'a, I2>,
         I2: LexerInput<'a>,

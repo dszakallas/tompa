@@ -2,6 +2,7 @@
 #![feature(try_trait)]
 #![feature(proc_macro_hygiene)]
 #![feature(associated_type_bounds)]
+#![feature(toowned_clone_into)]
 
 extern crate im_rc;
 extern crate nom;

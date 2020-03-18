@@ -38,12 +38,12 @@ macro_rules! assign_input {
 
 pub trait AsStr<'a> {
     #[inline]
-    fn as_str(self) -> &'a str;
+    fn as_str(&self) -> &'a str;
 }
 
 impl<'a> AsStr<'a> for &'a str {
     #[inline]
-    fn as_str(self) -> Self {
+    fn as_str(&self) -> Self {
         self
     }
 }
