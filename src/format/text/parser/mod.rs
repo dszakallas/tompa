@@ -1,14 +1,15 @@
 use im_rc;
 
-use crate::syntax::types::{FuncRef, FuncType, GlobalType, Limits, MemArg, MemType, Mut, TableType, ValType};
-use nom::error::{ParseError, ErrorKind};
-use std::ops::{RangeFrom, Try};
+use crate::syntax::{FuncRef, FuncType, GlobalType, Limits, Memarg, MemType, Mut, TableType, ValType};
+use nom::error::ParseError;
+use std::ops::RangeFrom;
 use nom::{Slice, InputIter, InputLength, IResult};
 use std::option::NoneError;
 use crate::format::text::lexer::{Token, Num, LexerInput};
 use crate::format::text::lexer::keyword::Keyword;
 use nom::sequence::delimited;
-use crate::format::input::satisfies;
+use crate::format::input::{satisfies, WithParseError};
+use std::collections::HashMap;
 
 mod lexical;
 mod values;
@@ -27,88 +28,100 @@ pub struct IdCtx {
     pub typedefs: im_rc::Vector<FuncType>,
 }
 
-pub trait ParserInput<'a, I: 'a>: Clone
-+ PartialEq
-+ Slice<RangeFrom<usize>>
-+ InputIter<Item=&'a Token<I>>
-+ InputLength {
-    type LexerInput;
-    type InputIterItem;
-    //type InputTakeAtPositionItem;
+pub trait WithWrappedInput {
+    type Inner;
 }
 
-impl<'a, I1, I2: 'a> ParserInput<'a, I2> for I1
+pub trait ParserInput<'a>: Clone
+    + PartialEq
+    + Slice<RangeFrom<usize>>
+    + WithWrappedInput
+    + WithParseError
+    + InputIter<Item=&'a Token<<Self as WithWrappedInput>::Inner>>
+    + InputLength
     where
-        I1: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + InputIter<Item=&'a Token<I2>>
-        + InputLength,
-        I2: LexerInput<'a>,
+        <Self as WithWrappedInput>::Inner: LexerInput<'a> + 'a
 {
-    type LexerInput = I2;
+    type InputIterItem;
+}
+
+impl<'a, I: 'a> ParserInput<'a> for I
+    where
+        I: Clone
+        + PartialEq
+        + WithWrappedInput
+        + WithParseError
+        + Slice<RangeFrom<usize>>
+        + InputIter<Item=&'a Token<<Self as WithWrappedInput>::Inner>>
+        + InputLength,
+        <Self as WithWrappedInput>::Inner: LexerInput<'a> + 'a,
+{
     type InputIterItem = <Self as InputIter>::Item;
-    //type InputTakeAtPositionItem = <Self as InputTakeAtPosition>::Item;
 }
 
 #[inline]
-pub fn keyword<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(keyword: Keyword) -> impl Fn(I1) -> IResult<I1, (), E> + 'a
-    where
-        I1: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + InputIter<Item=&'a Token<I2>>
-        + InputLength
+pub fn keyword<'a, I: ParserInput<'a> + 'a>(keyword: Keyword) -> impl Fn(I) -> IResult<I, &'a I::Inner, I::Error> + 'a
+    where I::Inner: LexerInput<'a>
 {
-    satisfies(move |tok: &'a Token<_>| match tok {
-        Token::Keyword(_, kw) if *kw == keyword => Ok(()),
+    satisfies(move |tok: &'a Token<I::Inner>| match tok {
+        Token::Keyword(i, kw) if *kw == keyword => Ok(i),
         _ => Err(NoneError)
     })
 }
 
 #[inline]
-pub fn num<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, &'a Num<I2>, E>
-    where
-        I1: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + InputIter<Item=&'a Token<I2>>
-        + InputLength
+pub fn anykeyword<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, (&'a I::Inner, &'a Keyword), I::Error>
+    where I::Inner: LexerInput<'a>
 {
-    satisfies(move |tok: &'a Token<I2>| match tok {
-        Token::Num(_, num) => Ok((num)),
+    satisfies(move |tok: &'a Token<I::Inner>| match tok {
+        Token::Keyword(i, kw) => Ok((i, kw)),
         _ => Err(NoneError)
     })(i)
 }
 
 #[inline]
-pub fn id<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, &'a I2, E>
-    where
-        I1: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + InputIter<Item=&'a Token<I2>>
-        + InputLength
+pub fn num<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, &'a Num<I::Inner>, I::Error>
+    where I::Inner: LexerInput<'a>
 {
-    satisfies(move |tok: &'a Token<I2>| match tok {
+    satisfies(move |tok: &'a Token<I::Inner>| match tok {
+        Token::Num(_, num) => Ok(num),
+        _ => Err(NoneError)
+    })(i)
+}
+
+#[inline]
+pub fn id<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, &'a I::Inner, I::Error>
+    where I::Inner: LexerInput<'a>
+{
+    satisfies(move |tok: &'a Token<I::Inner>| match tok {
         Token::Id(i) => Ok(i),
         _ => Err(NoneError)
     })(i)
 }
 
 #[inline]
-pub fn block<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a, O: 'a, F: 'a>(parser: F) -> impl Fn(I1) -> IResult<I1, O, E> + 'a
+pub fn par<'b, 'a: 'b, I: ParserInput<'a> +'a, O: 'a, F>(parser: F) -> impl Fn(I) -> IResult<I, O, I::Error> + 'b + 'a
     where
-        I1: Clone
-        + PartialEq
-        + Slice<RangeFrom<usize>>
-        + InputIter<Item=&'a Token<I2>>
-        + InputLength,
-        F: Fn(I1) -> IResult<I1, O, E>
+        I::Inner: LexerInput<'a>,
+        F: Fn(I) -> IResult<I, O, I::Error> + 'b + 'a
 {
     delimited(
         satisfies(move |tok: &'a Token<_>| if let Token::LPar(_) = tok { Ok(()) } else { Err(NoneError) }),
         parser,
         satisfies(move |tok: &'a Token<_>| if let Token::RPar(_) = tok { Ok(()) } else { Err(NoneError) }),
     )
+}
+
+// FIXME clean up the lifetimes and delete this duplicate
+#[inline]
+pub fn parc<'a, I: ParserInput<'a> +'a, O, F>(parser: F, i: I) -> IResult<I, O, I::Error>
+    where
+        I::Inner: LexerInput<'a>,
+        F: Fn(I) -> IResult<I, O, I::Error>
+{
+    delimited(
+        satisfies(move |tok: &'a Token<_>| if let Token::LPar(_) = tok { Ok(()) } else { Err(NoneError) }),
+        parser,
+        satisfies(move |tok: &'a Token<_>| if let Token::RPar(_) = tok { Ok(()) } else { Err(NoneError) }),
+    )(i)
 }

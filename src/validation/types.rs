@@ -4,187 +4,118 @@ use super::*;
 mod test {
     use super::*;
 
+    use crate::syntax::ValType::*;
+
     #[test]
-    fn test_limits_bound_rule() {
-        LimitsBoundRule { bound: 1 << 16 }
-            .check(&Limits { min: 1, max: None }, &Default::default())
+    fn test_limits_rule() {
+        Limits { min: 1, max: None }
+            .check(&LimitsBound { bound: 1 << 16}, &())
             .unwrap();
 
-        LimitsBoundRule { bound: 1 << 8 }
-            .check(&Limits { min: 1 << 16, max: None }, &Default::default())
+        Limits { min: 1 << 16, max: None }
+            .check(&LimitsBound { bound: 1 << 8 }, &())
             .unwrap_err();
 
-        LimitsBoundRule { bound: 1 << 16 }
-            .check(&Limits { min: 1 << 16, max: Some(1 << 8) }, &Default::default())
+        Limits { min: 1 << 16, max: Some(1 << 8) }
+            .check(&LimitsBound { bound: 1 << 16 }, &())
             .unwrap_err();
 
-        LimitsBoundRule { bound: 1 << 8 }
-            .check(&Limits { min: 1 << 8, max: Some(1 << 16) }, &Default::default())
+        Limits { min: 1 << 8, max: Some(1 << 16) }
+            .check(&LimitsBound { bound: 1 << 8 }, &())
             .unwrap_err();
     }
 
     #[test]
     fn test_func_type_rule() {
-        FuncTypeRule {}
-            .check(
-                &FuncType {
-                    parameters: vec![],
-                    results: vec![],
-                },
-                &Default::default(),
-            )
-            .unwrap();
+        FuncType { parameters: vec![], results: vec![] }
+            .check(&(), &()).unwrap();
 
-        FuncTypeRule {}
-            .check(
-                &FuncType {
-                    parameters: vec![ValType::I32, ValType::F32],
-                    results: vec![ValType::F64],
-                },
-                &Default::default(),
-            )
-            .unwrap();
+        FuncType { parameters: vec![I32, F32], results: vec![F64] }
+            .check(&(), &()).unwrap();
 
-        FuncTypeRule {}
-            .check(
-                &FuncType {
-                    parameters: vec![ValType::I32, ValType::F32],
-                    results: vec![ValType::F64, ValType::F64],
-                },
-                &Default::default(),
-            )
-            .unwrap_err();
+        FuncType { parameters: vec![I32, F32], results: vec![F64, F64] }
+            .check(&(), &()).unwrap_err();
     }
 
     #[test]
     fn test_table_type_rule() {
-        TableTypeRule {}
-            .check(
-                &TableType {
-                    limits: Limits {
-                        min: 1 << 16,
-                        max: Some(1 << 16),
-                    },
-                    elemtype: FuncRef {},
-                },
-                &Default::default(),
-            )
-            .unwrap();
+        &TableType {
+            limits: Limits { min: 1 << 16, max: Some(1 << 16) },
+            elemtype: FuncRef {},
+        }.check(&(), &()).unwrap();
 
-        TableTypeRule {}
-            .check(
-                &TableType {
-                    limits: Limits {
-                        min: 1 << 17,
-                        max: Some(1 << 16),
-                    },
-                    elemtype: FuncRef {},
-                },
-                &Default::default(),
-            )
-            .unwrap_err();
+        &TableType {
+            limits: Limits { min: 1 << 17, max: Some(1 << 16) },
+            elemtype: FuncRef {},
+        }.check(&(), &()).unwrap_err();
+
     }
 
     #[test]
     fn test_memory_type_rule() {
-        MemTypeRule {}
-            .check(
-                &MemType {
-                    limits: Limits {
-                        min: 1 << 16,
-                        max: Some(1 << 16),
-                    },
-                },
-                &Default::default(),
-            )
-            .unwrap();
-        MemTypeRule {}
-            .check(
-                &MemType {
-                    limits: Limits {
-                        min: 1 << 17,
-                        max: Some(1 << 17),
-                    },
-                },
-                &Default::default(),
-            )
-            .unwrap_err();
+        &MemType { limits: Limits { min: 1 << 16, max: Some(1 << 16) } }
+            .check(&(), &()).unwrap();
+
+        &MemType { limits: Limits { min: 1 << 17, max: Some(1 << 17) } }
+            .check(&(), &()).unwrap_err();
     }
 
     #[test]
     fn test_global_type_rule() {
-        GlobalTypeRule {}
-            .check(
-                &GlobalType {
-                    mut_: Mut::Const,
-                    valtype: ValType::I32,
-                },
-                &Default::default(),
-            )
-            .unwrap();
-
-        GlobalTypeRule {}
-            .check(
-                &GlobalType {
-                    mut_: Mut::Const,
-                    valtype: ValType::F64,
-                },
-                &Default::default(),
-            )
-            .unwrap();
+        &GlobalType { mut_: Mut::Const, valtype: ValType::I32 }
+            .check(&(), &()).unwrap();
     }
 }
 
-rule!(LimitsBoundRule { bound: u32 }: Limits => (), limits_bound_rule);
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct LimitsBound { pub bound: u32 }
 
-fn limits_bound_rule(
-    syntax: &Limits,
-    rule: &LimitsBoundRule,
-    _context: &Context,
-) -> WrappedResult<()> {
-    if syntax.min <= rule.bound
-        && syntax
-            .max
-            .map_or(true, |max| syntax.min <= max && max <= rule.bound)
-    {
+#[inline]
+fn limits_rule(syntax: &Limits, params: &LimitsBound, _ctx: &()) -> WrappedResult<()> {
+    if syntax.min <= params.bound && syntax.max.map_or(true, |max| syntax.min <= max && max <= params.bound) {
         Ok(())
     } else {
         None?
     }
 }
 
-rule!(FuncTypeRule: FuncType => (), func_type_rule);
+def_rule!(Limits(LimitsBound) => (), limits_rule);
 
-fn func_type_rule(syntax: &FuncType, _rule: &FuncTypeRule, _context: &Context) -> WrappedResult<()> {
+#[inline]
+fn func_type_rule(syntax: &FuncType, _params: &(), _ctx: &()) -> WrappedResult<()> {
     if syntax.results.len() <= 1 { Ok(()) } else { None? }
 }
 
-rule!(TableTypeRule: TableType => (), table_type_rule);
+def_rule!(FuncType => (), func_type_rule);
 
-fn table_type_rule(syntax: &TableType, _rule: &TableTypeRule, context: &Context, ) -> WrappedResult<()> {
-    LimitsBoundRule { bound: 1 << 16 }.check(&syntax.limits, context)?;
+#[inline]
+fn table_type_rule(syntax: &TableType, _params: &(), ctx: &()) -> WrappedResult<()> {
+    syntax.limits.check(&LimitsBound { bound: 1 << 16 }, ctx)?;
     Ok(())
 }
 
-rule!(MemTypeRule: MemType => (), mem_type_rule);
+def_rule!(TableType => (), table_type_rule);
 
-fn mem_type_rule(syntax: &MemType, _rule: &MemTypeRule, context: &Context) -> WrappedResult<()> {
-    LimitsBoundRule { bound: 1 << 16 }.check(&syntax.limits, context)?;
+#[inline]
+fn mem_type_rule(syntax: &MemType, _params: &(), ctx: &()) -> WrappedResult<()> {
+    syntax.limits.check(&LimitsBound { bound: 1 << 16 }, ctx)?;
     Ok(())
 }
 
-rule!(GlobalTypeRule: GlobalType => (), |_, _ ,_| Ok(()));
+def_rule!(MemType => (), mem_type_rule);
 
-macro_rules! derive_extern_type_rule {
-    ($rulename:ident($inner:ident): $syntax:ident => ()) => {
-        rule!($rulename {}: $syntax => (), |syntax: &$syntax, _, context: &Context| {
-            $inner {}.check(&syntax.0, context)?;
+def_rule!(GlobalType => (), |_, _ ,_| Ok(()));
+
+macro_rules! def_extern_type_rule {
+    ($syntax:ident) => {
+        def_rule!($syntax => (), |syntax: &$syntax, _, context: &()| {
+            syntax.0.check(&(), context)?;
             Ok(())
         });
     };
 }
 
-derive_extern_type_rule!(ExternFuncTypeRule(FuncTypeRule): ExternFuncType => ());
-derive_extern_type_rule!(ExternTableTypeRule(TableTypeRule): ExternTableType => ());
-derive_extern_type_rule!(ExternGlobalTypeRule(GlobalTypeRule): ExternGlobalType => ());
-derive_extern_type_rule!(ExternMemTypeRule(MemTypeRule): ExternMemType => ());
+def_extern_type_rule!(ExternFuncType);
+def_extern_type_rule!(ExternTableType);
+def_extern_type_rule!(ExternGlobalType);
+def_extern_type_rule!(ExternMemType);

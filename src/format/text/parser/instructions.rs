@@ -1,43 +1,260 @@
-
-use std::ops::{RangeFrom};
-
-use lexical_core::{Integer as LcInteger};
-
 use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
 
-use nom::bytes::complete::{tag};
 
 use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
-use nom::error::{ErrorKind, ParseError};
-use nom::lib::std::ops::{Range, RangeTo};
+use nom::error::{ParseError, ErrorKind};
+
 use nom::multi::{fold_many0, many0, many1};
-use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
 
-use crate::syntax::instructions::{Block, IfElse, Instr, Loop, Load, Store};
-use crate::syntax::types::{ValType, MemArg, Sx};
+use crate::syntax::*;
 
-use crate::format::text::parser::{IdCtx, ParserInput, id, keyword};
-use crate::format::text::parser::values::uxx;
+use crate::format::text::parser::{IdCtx, ParserInput, id, keyword, WithWrappedInput, anykeyword, par, parc};
+
 use crate::format::text::lexer::LexerInput;
 
-use crate::format::text::lexer::keyword::Keyword::*;
+use crate::format::text::lexer::keyword::Keyword;
 
-use crate::format::text::parser::types::resulttype;
+use crate::format::text::parser::types::{resulttype, params, results};
+use crate::format::text::parser::values::{ixx, fxx};
+
+use crate::format::text::parser::lexical::parsed_uxx;
+use nom::sequence::{pair, preceded, tuple};
+use std::option::NoneError;
+
+use crate::format::text::lexer::AsStr;
+
+use phf::phf_map;
+
+use std::result::Result as StdResult;
+use crate::format::input::WithParseError;
+use std::collections::{HashMap, HashSet};
+use nom::branch::alt;
+use crate::format::text::parser::values::uxx;
+use nom::lib::std::collections::VecDeque;
+
+#[derive(Clone, Debug)]
+pub enum InstrParseType {
+    NoArg(fn() -> Instruction),
+    Block(fn(Option<ValType>, Vec<Instruction>) -> Instruction),
+    Loop(fn(Option<ValType>, Vec<Instruction>) -> Instruction),
+    If(fn(Option<ValType>, Vec<Instruction>, Vec<Instruction>) -> Instruction),
+    LocalIdx(fn(LocalIdx) -> Instruction),
+    GlobalIdx(fn(GlobalIdx) -> Instruction),
+    LabelIdx(fn(LabelIdx) -> Instruction),
+    LabelIdxN(fn(Vec<LabelIdx>) -> Instruction),
+    FuncIdx(fn(FuncIdx) -> Instruction),
+    TypeIdx(fn(TypeIdx) -> Instruction),
+    MemLs(u32, fn(Memarg) -> Instruction),
+    ConstI32(fn(u32) -> Instruction),
+    ConstI64(fn(u64) -> Instruction),
+    ConstF32(fn(f32) -> Instruction),
+    ConstF64(fn(f64) -> Instruction),
+}
 
 #[inline]
-fn label<'a, 'b, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(ctx: &'b IdCtx) -> impl Fn(I1) -> IResult<I1, IdCtx, E1> + 'b
+fn block<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Block, I::Error> + 'b
     where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>,
+        I::Inner: LexerInput<'a>,
 {
-    move |input: I1| {
+    move |i: I| {
+        let (i, inner_ctx) = label(ctx)(i)?;
+        let (i, result) = opt(resulttype)(i)?;
+        let (i, instrs) = many0(instr(&inner_ctx))(i)?;
+        let (i, _) = keyword(Keyword::End)(i)?;
+        let (i, _) = id_checker(&inner_ctx)(i)?;
+        Ok((i, Block { result, instrs }))
+    }
+}
+
+#[inline]
+fn loop_<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Loop, I::Error> + 'b
+    where
+        I::Inner: LexerInput<'a>,
+{
+    move |i: I| {
+        let (i, inner_ctx) = label(ctx)(i)?;
+        let (i, result) = opt(resulttype)(i)?;
+        let (i, instrs) = many0(instr(&inner_ctx))(i)?;
+        let (i, _) = keyword(Keyword::End)(i)?;
+        let (i, _) = id_checker(&inner_ctx)(i)?;
+        Ok((i, Loop { result, instrs }))
+    }
+}
+
+#[inline]
+fn if_<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, If, I::Error> + 'b
+    where
+        I::Inner: LexerInput<'a>, {
+    move |i: I| {
+        let (i, inner_ctx) = label(ctx)(i)?;
+        let (i, result) = opt(resulttype)(i)?;
+        let (i, if_instrs) = many0(instr(&inner_ctx))(i)?;
+        let (i, else_) = opt(keyword(Keyword::Else))(i)?;
+        let (i, else_instrs) = if let Some(_) = else_ {
+            let (i, _) = id_checker(&inner_ctx)(i)?;
+            let (i, else_instrs) = many0(instr(&inner_ctx))(i)?;
+            (i, else_instrs)
+        } else {
+            (i, vec![])
+        };
+        let (i, _) = keyword(Keyword::End)(i)?;
+        let (i, _) = id_checker(&inner_ctx)(i)?;
+        Ok((i, If { result, if_instrs, else_instrs }))
+    }
+}
+
+macro_rules! def_instruction_parser_helpers {
+    ($($id:ident { params: ($($pname:ident: $pty:ty),*), text: $_text:expr, opcode: $opcode:expr, parse: $parse_tpe:ident($($arg:expr),*), $($_rest:tt)*}),*) => {
+        static INSTR_PARSERS: phf::Map<i32, InstrParseType> = phf_map! {
+            $(
+                $opcode => InstrParseType::$parse_tpe($($arg,)* |$($pname: $pty),*| crate::syntax::Instruction::$id(crate::syntax::$id { $($pname),* }))
+            ),*
+        };
+    }
+}
+
+instruction_defs_cps!(def_instruction_parser_helpers());
+
+macro_rules! def_idx_parsers {
+    ($($name:ident -> $table_name:ident),*) => {
+        $(
+            #[inline]
+            fn $name<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, u32, I::Error> + 'b
+                where I::Inner: LexerInput<'a>,
+            {
+                move |i: I| { // FIXME: compiler emits error[E0495] if I eta reduce this
+                    alt((
+                        map_res(id, move |lit: &'a I::Inner| -> StdResult<u32, NoneError> {
+                            let idx = ctx.$table_name.index_of(&Some(lit.as_str().to_owned()))?;
+                            Ok(idx as u32)
+                        }),
+                        uxx::<u32, I>
+                    ))(i)
+                }
+            }
+        )*
+    }
+}
+
+def_idx_parsers! {
+    localidx   -> locals,
+    globalidx  -> globals,
+    funcidx    -> funcs,
+    labelidx   -> labels,
+    typeidx    -> types
+}
+
+#[inline]
+pub fn instr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Instruction, I::Error> + 'b
+    where I::Inner: LexerInput<'a>,
+{
+    move |i: I| {
+        // FIXME we might need to handle terminal folded instructions here
+        let (i, (inner_i, kw)) = anykeyword(i)?;
+        match INSTR_PARSERS.get(&(*kw as i32)) {
+            Some(InstrParseType::Block(_)) => map(block(ctx), |v| Instruction::Block(v))(i),
+            Some(InstrParseType::Loop(_)) => map(loop_(ctx), |v| Instruction::Loop(v))(i),
+            Some(InstrParseType::If(_)) => map(if_(ctx), |v| Instruction::If(v))(i),
+            Some(InstrParseType::NoArg(constr)) => Ok((i, constr())),
+            Some(InstrParseType::LocalIdx(constr)) => map(localidx(ctx), constr)(i),
+            Some(InstrParseType::GlobalIdx(constr)) => map(globalidx(ctx), constr)(i),
+            Some(InstrParseType::LabelIdx(constr)) => map(labelidx(ctx), constr)(i),
+            Some(InstrParseType::LabelIdxN(constr)) => map(many1(labelidx(ctx)), constr)(i),
+            Some(InstrParseType::FuncIdx(constr)) => map(funcidx(ctx), constr)(i),
+            Some(InstrParseType::TypeIdx(constr)) => {
+                let (ok_i, (typeidx, locals)) = typeuse(ctx)(i.clone())?;
+                for l in locals.iter() {
+                    if let Some(_) = l {
+                        // id ctx most be empty
+                        return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)));
+                    }
+                };
+                Ok((ok_i, constr(typeidx)))
+            }
+            Some(InstrParseType::MemLs(default_align, constr)) => {
+                map(memarg(*default_align), constr)(i)
+            },
+            Some(InstrParseType::ConstI32(constr)) => map(ixx::<u32, I>, constr)(i),
+            Some(InstrParseType::ConstI64(constr)) => map(ixx::<u64, I>, constr)(i),
+            Some(InstrParseType::ConstF32(constr)) => map(fxx::<f32, I>, constr)(i),
+            Some(InstrParseType::ConstF64(constr)) => map(fxx::<f64, I>, constr)(i),
+            None => Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Char))),
+        }
+    }
+}
+
+#[inline]
+pub fn plaininstr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Instruction, I::Error> + 'b
+    where I::Inner: LexerInput<'a>,
+{
+    move |i: I| {
+        // FIXME we might need to handle terminal folded instructions here
+        let (i, (inner_i, kw)) = anykeyword(i)?;
+        match INSTR_PARSERS.get(&(*kw as i32)) {
+            Some(InstrParseType::NoArg(constr)) => Ok((i, constr())),
+            Some(InstrParseType::LocalIdx(constr)) => map(localidx(ctx), constr)(i),
+            Some(InstrParseType::GlobalIdx(constr)) => map(globalidx(ctx), constr)(i),
+            Some(InstrParseType::LabelIdx(constr)) => map(labelidx(ctx), constr)(i),
+            Some(InstrParseType::LabelIdxN(constr)) => map(many1(labelidx(ctx)), constr)(i),
+            Some(InstrParseType::FuncIdx(constr)) => map(funcidx(ctx), constr)(i),
+            Some(InstrParseType::TypeIdx(constr)) => {
+                let (ok_i, (typeidx, locals)) = typeuse(ctx)(i.clone())?;
+                for l in locals.iter() {
+                    if let Some(_) = l {
+                        // id ctx most be empty
+                        return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)));
+                    }
+                };
+                Ok((ok_i, constr(typeidx)))
+            }
+            Some(InstrParseType::MemLs(default_align, constr)) => {
+                map(memarg(*default_align), constr)(i)
+            },
+            Some(InstrParseType::ConstI32(constr)) => map(ixx::<u32, I>, constr)(i),
+            Some(InstrParseType::ConstI64(constr)) => map(ixx::<u64, I>, constr)(i),
+            Some(InstrParseType::ConstF32(constr)) => map(fxx::<f32, I>, constr)(i),
+            Some(InstrParseType::ConstF64(constr)) => map(fxx::<f64, I>, constr)(i),
+            _ => Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Char))),
+        }
+    }
+}
+
+// #[inline]
+// pub fn instr_seq<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Vec<Instruction>, I::Error> + 'b
+//     where I::Inner: LexerInput<'a>,
+// {
+//     move |i: I| {
+//         let mut acc = Vec::with_capacity(4);
+//         let mut i = i.clone();
+//         loop
+//             match f(i.clone()) {
+//                 Err(Err::Error(_)) => return Ok((i, acc)),
+//                 Err(e) => return Err(e),
+//                 Ok((i1, o)) => {
+//                     if i1 == i {
+//                         return Err(Err::Error(E::from_error_kind(i, ErrorKind::Many0)));
+//                     }
+//
+//                     i = i1;
+//                     acc.push(o);
+//                 }
+//             }
+//         }
+//     }
+// }
+
+#[inline]
+fn label<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, IdCtx, I::Error> + 'b
+    where I::Inner: LexerInput<'a>,
+{
+    move |input: I| {
         let _i = input.clone();
-        let (i, c) = map_res(opt(id), |id_opt: Option<&I2>| {
+        let (i, c) = map_res(opt(id), |id_opt: Option<&I::Inner>| {
             match id_opt {
                 Some(id) => {
                     let item = Some(id.as_str().to_owned());
                     if ctx.labels.index_of(&item) != None {
-                        Err(()) // TODO pretty error
+                        Err(())
                     } else {
                         Ok(item)
                     }
@@ -52,26 +269,13 @@ fn label<'a, 'b, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(ctx: &'b IdCtx) -> imp
 }
 
 #[inline]
-fn instr<'a, 'b, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(_ctx: &'b IdCtx) -> impl Fn(I1) -> IResult<I1, Instr, E1>
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>,
+fn id_checker<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, (), I::Error> + 'b
+    where I::Inner: LexerInput<'a>,
 {
-    move |i: I1| {
-        // TODO implement instr parser
-        unimplemented!()
-    }
-}
-//
-#[inline]
-fn id_checker<'a, 'b, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(ctx: &'b IdCtx) -> impl Fn(I1) -> IResult<I1, (), E1> + 'b
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>, {
-    move |i: I1| {
+    move |i: I| {
         map_res(
             opt(id),
-            |id_ch_opt: Option<&'a I2>| {
+            |id_ch_opt: Option<&'a I::Inner>| {
                 if let Some(id_ch) = id_ch_opt {
                     let id_opt = &ctx.labels[ctx.labels.len() - 1];
                     match id_opt {
@@ -82,252 +286,117 @@ fn id_checker<'a, 'b, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(ctx: &'b IdCtx) -
                 } else {
                     Ok(())
                 }
-            }
+            },
         )(i)
     }
 }
 
 #[inline]
-fn block<'a, 'b, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(ctx: &'b IdCtx) -> impl Fn(I1) -> IResult<I1, Block, E> + 'b
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>,
+fn memarg<'a, I: ParserInput<'a> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, Memarg, I::Error> + 'a
+    where I::Inner: LexerInput<'a>,
 {
-    move |i: I1| {
-        let (i, _) = keyword(Block)(i)?;
-        let (i, inner_ctx) = label(ctx)(i)?;
-        let (i, result) = opt(resulttype)(i)?;
-        let (i, instrs) = many0(instr(&inner_ctx))(i)?;
-        let (i, _) = keyword(End)(i)?;
-        let (i, _) = id_checker(&inner_ctx)(i)?;
-        Ok((i, Block { result, instrs }))
+    type Inner<I> = <I as WithWrappedInput>::Inner;
+    move |input: I| {
+        let (i, (offset, align)) = pair(
+            map_res(
+                opt(keyword::<I>(Keyword::OffsetEqU32)),
+                |opt_o: Option<&I::Inner>| -> StdResult<u32, NoneError> {
+                    if let Some(kw) = opt_o {
+                        let o_i = kw.slice(7..);
+                        let (_, offset) = parsed_uxx::<u32, Inner<I>>(o_i)
+                            .map_err(|_| NoneError)?;
+                        Ok(offset)
+                    } else {
+                        Ok(0)
+                    }
+                },
+            ),
+            map_res(
+                opt(keyword::<I>(Keyword::AlignEqU32)),
+                |opt_a: Option<&I::Inner>| -> StdResult<u32, NoneError> {
+                    if let Some(kw) = opt_a {
+                        let a_i = kw.slice(6..);
+                        let (_, align) = map_res(
+                            parsed_uxx::<u32, I::Inner>,
+                            |n| if n.count_ones() != 1 {
+                                Err(NoneError)
+                            } else {
+                                Ok(n.trailing_zeros())
+                            },
+                        )(a_i).map_err(|_| NoneError)?;
+                        Ok(align)
+                    } else {
+                        Ok(n)
+                    }
+                },
+            ),
+        )(input)?;
+
+        Ok((i, Memarg { offset, align }))
     }
 }
 
-// #[inline]
-// fn loop_<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, Loop, E>
-//     where
-//         I: Clone
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + PartialEq
-//         + InputIter
-//         + InputTake
-//         + InputLength
-//         + InputTakeAtPosition
-//         + Compare<&'static str>
-//         + AsStr<'a>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     move |i: I| {
-//         let (i, _) = token(tag("loop"))(i)?;
-//         let (i, inner_ctx) = label(ctx.clone())(i)?;
-//         let (i, result) = opt(result)(i)?;
-//         let (i, instrs) = many0(instr(inner_ctx.clone()))(i)?;
-//         let (i, _) = token(tag("end"))(i)?;
-//         let (i, _) = id_checker(&inner_ctx)(i)?;
-//         Ok((i, Loop { result, instrs }))
-//     }
-// }
-//
-// #[inline]
-// fn if_else<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, IfElse, E>
-//     where
-//         I: Clone
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + PartialEq
-//         + InputIter
-//         + InputTake
-//         + InputLength
-//         + InputTakeAtPosition
-//         + Compare<&'static str>
-//         + AsStr<'a>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//     move |i: I| {
-//         let (i, _) = token(tag("if"))(i)?;
-//         let (i, inner_ctx) = label(ctx.clone())(i)?;
-//         let (i, result) = opt(result)(i)?;
-//         let (i, if_instrs) = many0(instr(inner_ctx.clone()))(i)?;
-//         let (i, else_) = opt(token(tag("else")))(i)?;
-//         let (i, else_instrs) = if let Some(_) = else_ {
-//             let (i, _) = id_checker(&inner_ctx)(i)?;
-//             let (i, else_instrs) = many0(instr(inner_ctx.clone()))(i)?;
-//             (i, else_instrs)
-//         } else {
-//             (i, vec![])
-//         };
-//         let (i, _) = token(tag("end"))(i)?;
-//         let (i, _) = id_checker(&inner_ctx)(i)?;
-//         Ok((i, IfElse { result, if_instrs, else_instrs }))
-//     }
-// }
+#[inline]
+fn typeuse<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, (TypeIdx, Vec<Option<String>>), I::Error> + 'b
+    where I::Inner: LexerInput<'a>,
+{
+    move |i: I| {
+        let (i, (type_idx, inline)) = parc(preceded(
+            keyword(Keyword::Type), tuple((
+                typeidx::<I>(ctx),
+                alt((
+                    // we should attempt inline parsing when only the result is given
+                    value(None, alt((not(params), not(results)))),
+                    map(pair(params, results), |v| Some(v))
+                ))
+            ))
+        ), i)?;
 
-//#[inline]
-//fn blockinstr<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, BlockInstr, E>
-//    where
-//        I: Clone
-//        + Slice<RangeFrom<usize>>
-//        + Slice<Range<usize>>
-//        + Slice<RangeTo<usize>>
-//        + PartialEq
-//        + InputIter
-//        + InputTake
-//        + InputLength
-//        + InputTakeAtPosition
-//        + Compare<&'static str>
-//        + AsStr<'a>,
-//        <I as InputIter>::Item: NomAsChar + AsChar,
-//        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar, {
-//    alt((
-//        map(block(ctx.clone()), |block| BlockInstr::Block(block)),
-//        map(loop_(ctx.clone()), |loop_| BlockInstr::Loop(loop_)),
-//        map(if_else(ctx), |if_else| BlockInstr::IfElse(if_else)),
-//    ))
-//}
+        let functype = &ctx.typedefs[type_idx as usize];
 
-// fn memarg<'a, I: 'a, E: ParseError<I> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, MemArg, E> + 'a
-//     where
-//         I: Clone
-//         + Slice<RangeFrom<usize>>
-//         + Slice<Range<usize>>
-//         + Slice<RangeTo<usize>>
-//         + PartialEq
-//         + InputIter
-//         + InputTake
-//         + InputLength
-//         + InputTakeAtPosition
-//         + Compare<&'static str>
-//         + AsStr<'a>,
-//         <I as InputIter>::Item: NomAsChar + AsChar,
-//         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar,
-// {
-//     move |i: I| {
-//         let (i, offset) = if let Ok((i, _)) = tag::<&str, I, E>("offset=")(i.clone()) {
-//             token(uxx::<I, E, u32>)(i)?
-//         } else {
-//             (i, 0)
-//         };
-//
-//         let (i, align) = if let Ok((i, _)) = tag::<&str, I, E>("align=")(i.clone()) {
-//             let (i, a) = token(uxx::<I, E, u32>)(i.clone())?;
-//             if a.count_ones() != 1 {
-//                 Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Digit)))?
-//             } else {
-//                 (i, a.trailing_zeros())
-//             }
-//         } else {
-//             (i, n)
-//         };
-//
-//         Ok((i, MemArg { offset , align }))
-//     }
-// }
-//
-// macro_rules! lsint {
-//     ($name:ident, $tag:expr, $syntax:tt, $valtype:expr, $storage_size:expr, $memarg:expr) => {
-//         #[inline]
-//         pub fn $name<'a, I: 'a, E: ParseError<I> + 'a>(_ctx: IdCtx) -> impl Fn(I) -> IResult<I, $syntax, E> + 'a
-//             where
-//                 I: Clone
-//                     + Slice<RangeFrom<usize>>
-//                     + Slice<Range<usize>>
-//                     + Slice<RangeTo<usize>>
-//                     + PartialEq
-//                     + InputIter
-//                     + InputTake
-//                     + InputLength
-//                     + InputTakeAtPosition
-//                     + Compare<&'static str>
-//                     + AsStr<'a>,
-//                     <I as InputIter>::Item: NomAsChar + AsChar,
-//                     <I as InputTakeAtPosition>::Item: NomAsChar + AsChar,
-//         {
-//            map(preceded(token(tag($tag)), memarg($memarg)), |memarg| { $syntax { valtype: $valtype, storage_size: $storage_size, memarg } })
-//         }
-//     }
-// }
-//
-// macro_rules! numint {
-//     ($name:ident, $tag:expr, $syntax:tt, $valtype:expr, $storage_size:expr, $memarg:expr) => {
-//         #[inline]
-//         pub fn $name<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, $syntax, E> + 'a
-//             where
-//                 I: Clone
-//                     + Slice<RangeFrom<usize>>
-//                     + Slice<Range<usize>>
-//                     + Slice<RangeTo<usize>>
-//                     + PartialEq
-//                     + InputIter
-//                     + InputTake
-//                     + InputLength
-//                     + InputTakeAtPosition
-//                     + Compare<&'static str>
-//                     + AsStr<'a>,
-//                     <I as InputIter>::Item: NomAsChar + AsChar,
-//                     <I as InputTakeAtPosition>::Item: NomAsChar + AsChar,
-//         {
-//            map(preceded(token(tag($tag)), memarg($memarg)), |memarg| { $syntax { valtype: $valtype, storage_size: $storage_size, memarg } })
-//         }
-//     }
-// }
-//
-// lsint!(i32load, "i32.load", Load, ValType::I32, None, 4);
-// lsint!(i64load, "i64.load", Load, ValType::I64, None, 8);
-// lsint!(f32load, "f32.load", Load, ValType::F32, None, 4);
-// lsint!(f64load, "f64.load", Load, ValType::F64, None, 8);
-// lsint!(i32load8_s, "i32.load8_s", Load, ValType::I32, Some((8, Sx::S)), 1);
-// lsint!(i32load8_u, "i32.load8_u", Load, ValType::I32, Some((8, Sx::U)), 1);
-// lsint!(i32load16_s, "i32.load16_s", Load, ValType::I32, Some((16, Sx::S)), 2);
-// lsint!(i32load16_u, "i32.load16_u", Load, ValType::I32, Some((16, Sx::U)), 2);
-// lsint!(i64load8_s, "i64.load8_s", Load, ValType::I64, Some((8, Sx::S)), 1);
-// lsint!(i64load8_u, "i64.load8_u", Load, ValType::I64, Some((8, Sx::U)), 1);
-// lsint!(i64load16_s, "i64.load16_s", Load, ValType::I64, Some((16, Sx::S)), 2);
-// lsint!(i64load16_u, "i64.load16_u", Load, ValType::I64, Some((16, Sx::U)), 2);
-// lsint!(i64load32_s, "i64.load32_s", Load, ValType::I64, Some((32, Sx::S)), 4);
-// lsint!(i64load32_u, "i64.load32_u", Load, ValType::I64, Some((32, Sx::U)), 4);
-// lsint!(i32store, "i32.store", Store, ValType::I32, None, 4);
-// lsint!(i64store, "i64.store", Store, ValType::I64, None, 8);
-// lsint!(f32store, "f32.store", Store, ValType::F32, None, 4);
-// lsint!(f64store, "f64.store", Store, ValType::F64, None, 8);
-// lsint!(i32store8, "i32.store8", Store, ValType::I32, Some(8), 1);
-// lsint!(i32store16, "i32.store16", Store, ValType::I32, Some(16), 2);
-// lsint!(i64store8, "i64.store8", Store, ValType::I64, Some(8), 1);
-// lsint!(i64store16, "i64.store16", Store, ValType::I64, Some(16), 2);
-// lsint!(i64store32, "i64.store32", Store, ValType::I64, Some(32), 4);
-//
-// // TODO memory.grow memory.size
-//
-//
-//
-// //numint!(i32load, I32Load, "i32.load", 4);
-// //numint!(jajj2, I32Load, "i32.load", 4);
-//
-//
-//
-// //fn meminstr<'a, I: 'a, E: ParseError<I> + 'a>(ctx: IdCtx) -> impl Fn(I) -> IResult<I, BlockInstr, E>
-// //    where
-// //        I: Clone
-// //        + Slice<RangeFrom<usize>>
-// //        + Slice<Range<usize>>
-// //        + Slice<RangeTo<usize>>
-// //        + PartialEq
-// //        + InputIter
-// //        + InputTake
-// //        + InputLength
-// //        + InputTakeAtPosition
-// //        + Compare<&'static str>
-// //        + AsStr<'a>,
-// //        <I as InputIter>::Item: NomAsChar + AsChar,
-// //        <I as InputTakeAtPosition>::Item: NomAsChar + AsChar,
-// //{
-// //    (tag("i32.load"), memarg(4))
-// //}
-//
-// //instr!("i32.load", I32Load, memarg(4));
+        let bound_params = if let Some((params, results)) = inline {
+            // results
+            if results.len() != functype.results.len() {
+                // index out of bound
+                return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)))
+            }
+            for (j, vt) in results.iter().enumerate() {
+                if &functype.parameters[j] != vt {
+                    // types do not match
+                    return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)))
+                }
+            }
+            if params.len() != functype.parameters.len() {
+                // index out of bound
+                return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)))
+            }
+
+            // params
+
+            let mut dupes = HashSet::<&'a str>::new();
+
+            for (j, (inner_i, vt)) in params.iter().enumerate() {
+                if let (Some(inner_i)) = inner_i {
+                    if dupes.insert(inner_i.as_str()) {
+                        // duplicate name
+                        return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)))
+                    }
+                }
+                if &functype.parameters[j] != vt {
+                    // types do not match
+                    return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)))
+                }
+            }
+            params.into_iter().map(|(opt_i, _)| opt_i.map(|i| i.as_str().to_owned())).collect()
+        } else {
+            vec![None; functype.parameters.len()]
+        };
+
+        Ok((i, (type_idx, bound_params)))
+    }
+}
+
+
 //
 // #[cfg(test)]
 // mod test {

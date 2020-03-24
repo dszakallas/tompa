@@ -4,22 +4,20 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::option::NoneError;
 
-
 use im_rc;
 
-use crate::syntax::types::*;
+use crate::syntax::*;
 
 #[derive(Debug)]
 pub struct TypeError {
-    rule: String,
-    syntax: String,
+    syntax: String
 }
 
 impl<'a> Display for TypeError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_fmt(format_args!(
-            "{} does not satisfy {}",
-            self.syntax, self.rule
+            "unable to type {}",
+            self.syntax,
         ))
     }
 }
@@ -56,27 +54,39 @@ pub struct Context {
     ret: Option<Option<ValType>>,
 }
 
-pub trait Type<S, T> {
-    fn check(&self, syntax: &S, context: &Context) -> Result<T, TypeError>;
+pub trait Type {
+    type Value;
+    type Parameters;
+    type Context;
+
+    #[inline]
+    fn check(&self, parameters: &Self::Parameters, context: &Self::Context) -> Result<Self::Value, TypeError>;
 }
 
-macro_rules! rule {
-    ($rulename:ident: $syntax:ty => $tpe:ty, $check:expr) => {
-        rule!($rulename {}: $syntax => $tpe, $check);
+macro_rules! def_rule {
+    ($syntax:tt => $tpe:ty, $check:expr) => {
+        def_rule!($syntax(()) => $tpe, $check);
     };
 
-    ($rulename:ident { $($pn:ident: $pt:ty),* }: $syntax:ty => $tpe:ty, $check:expr) => {
-        #[derive(Debug, Clone)]
-        pub struct $rulename {
-          $(
-            pub $pn: $pt,
-          )*
-        }
+    ($syntax:tt($params:ty) => $tpe:ty, $check:expr) => {
+        def_rule!(() |- $syntax($params) => $tpe, $check);
+    };
 
-        impl Type<$syntax, $tpe> for $rulename {
-            fn check(&self, syntax: &$syntax, context: &Context) -> Result<$tpe, TypeError> {
-                $check(syntax, self, context).map_err(|e: TypeErrorWrapper| {
-                    e.inner.unwrap_or_else(move || type_error!(syntax, self))
+    ($ctx:ty |- $syntax:tt => $tpe:ty, $check:expr) => {
+        def_rule!($ctx |- $syntax(()) => $tpe, $check);
+    };
+
+    ($ctx:ty |- $syntax:tt($params:ty) => $tpe:ty, $check:expr) => {
+        impl Type for $syntax {
+            type Value = $tpe;
+            type Parameters = $params;
+            type Context = $ctx;
+
+            #[inline]
+            fn check(&self, parameters: &Self::Parameters, context: &Self::Context) -> Result<Self::Value, TypeError> {
+
+                $check(self, parameters, context).map_err(|e: TypeErrorWrapper| {
+                    e.inner.unwrap_or_else(move || type_error!(self))
                 })
             }
         }
@@ -84,9 +94,8 @@ macro_rules! rule {
 }
 
 macro_rules! type_error {
-    ($syntax:expr, $rule: expr) => {
+    ($syntax:expr) => {
         TypeError {
-            rule: format!("{:?}", $rule),
             syntax: format!("{:?}", $syntax),
         }
     };
@@ -103,6 +112,6 @@ macro_rules! some_if {
 
 mod types;
 
-mod instructions;
-
-mod modules;
+//mod instructions;
+//
+// mod modules;

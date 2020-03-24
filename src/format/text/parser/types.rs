@@ -1,21 +1,17 @@
-
-use std::ops::{RangeFrom};
-
 use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice, Offset};
 use nom::branch::alt;
-use nom::bytes::complete::{tag};
-use nom::character::complete::{anychar, char, digit1, hex_digit1, not_line_ending};
+
 use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
 use nom::error::{ParseError};
-use nom::lib::std::ops::{Range, RangeTo};
-use nom::multi::{many0, many1, fold_many0};
-use nom::sequence::{delimited, pair, preceded, terminated, tuple};
 
-use crate::syntax::types::{FuncRef, GlobalType, Limits, MemType, Mut, TableType, ValType};
+use nom::multi::{many0, fold_many0};
+use nom::sequence::{pair, preceded, terminated, tuple};
+
+use crate::syntax::{FuncRef, GlobalType, Limits, MemType, Mut, TableType, ValType};
 
 use crate::format::text::parser::values::uxx;
-use crate::format::text::parser::{keyword, block, ParserInput, id};
-use crate::format::text::lexer::{Token, AsStr, AsChar, LexerInput};
+use crate::format::text::parser::{keyword, par, ParserInput, id};
+use crate::format::text::lexer::{LexerInput};
 use crate::format::text::lexer::keyword::Keyword::*;
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -25,9 +21,8 @@ pub struct FuncType<'a, I> {
 }
 
 #[inline]
-pub fn valtype<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, ValType, E>
-    where
-        I1: ParserInput<'a, I2>,
+pub fn valtype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, ValType, I::Error>
+    where I::Inner: LexerInput<'a>
 {
     alt((
         value(ValType::I32, keyword(I32)),
@@ -38,67 +33,57 @@ pub fn valtype<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1,
 }
 
 #[inline]
-pub fn globaltype<'a, I1: 'a, E: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, GlobalType, E>
-    where
-        I1: ParserInput<'a, I2>,
+pub fn globaltype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, GlobalType, I::Error>
+    where I::Inner: LexerInput<'a>
 {
     alt((
         map(valtype, |valtype| GlobalType { mut_: Mut::Const, valtype }),
-        map(block(preceded(keyword(Mut), valtype)), |valtype| GlobalType { mut_: Mut::Var, valtype })
+        map(par(preceded(keyword(Mut), valtype)), |valtype| GlobalType { mut_: Mut::Var, valtype })
     ))(i)
 }
 
 #[inline]
-pub fn limits<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a, E2: ParseError<I2> + 'a>(i: I1) -> IResult<I1, Limits, E1>
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>,
+pub fn limits<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Limits, I::Error>
+    where I::Inner: LexerInput<'a>
 {
     map(
-        pair(uxx::<u32, I1, E1, I2, E2>, opt(uxx::<u32, I1, E1, I2, E2>)),
+        pair(uxx::<u32, I>, opt(uxx::<u32, I>)),
         |(min, max)| Limits { min, max },
     )(i)
 }
 
 #[inline]
-pub fn tabletype<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a, E2: ParseError<I2> + 'a>(i: I1) -> IResult<I1, TableType, E1>
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>,
+pub fn tabletype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, TableType, I::Error>
+    where I::Inner: LexerInput<'a>
 {
     map(
-        terminated(limits::<I1, E1, I2, E2>, keyword(Funcref)),
+        terminated(limits::<I>, keyword(Funcref)),
         |limits| TableType { limits, elemtype: FuncRef {} },
     )(i)
 }
 
 #[inline]
-pub fn memtype<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a, E2: ParseError<I2> + 'a>(i: I1) -> IResult<I1, MemType, E1>
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>, {
-    map(limits::<I1, E1, I2, E2>, |limits| MemType { limits })(i)
+pub fn memtype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, MemType, I::Error>
+    where I::Inner: LexerInput<'a>
+{
+    map(limits::<I>, |limits| MemType { limits })(i)
 }
 
 #[inline]
-pub fn functype<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a, E2: ParseError<I2> + 'a>(i: I1) -> IResult<I1, FuncType<'a, I2>, E1>
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>,
+pub fn functype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, FuncType<'a, I::Inner>, I::Error>
+    where I::Inner: LexerInput<'a>
 {
-    map(block(preceded(keyword(Func), tuple((params::<I1, E1, I2>, results::<I1, E1, I2>)))), |(parameters, results)| {
-        FuncType::<'a, I2> { parameters, results }
+    map(par(preceded(keyword(Func), tuple((params::<I>, results::<I>)))), |(parameters, results)| {
+        FuncType::<'a, I::Inner> { parameters, results }
     })(i)
 }
 
 #[inline]
-pub fn params<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, Vec<(Option<&'a I2>, ValType)>, E1>
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>, {
-
+pub fn params<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Vec<(Option<&'a I::Inner>, ValType)>, I::Error>
+    where I::Inner: LexerInput<'a>
+{
     fold_many0(
-        block(preceded(keyword(Param), alt((
+        par(preceded(keyword(Param), alt((
             map(pair(id, valtype), |(id, valtype)| vec![(Some(id), valtype)]),
             map(many0(valtype), |v| v.into_iter().map(|valtype| (None, valtype)).collect()),
         )))),
@@ -108,24 +93,21 @@ pub fn params<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1,
 }
 
 #[inline]
-pub fn results<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, Vec<ValType>, E1>
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>, {
-
+pub fn results<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Vec<ValType>, I::Error>
+    where I::Inner: LexerInput<'a>
+{
     fold_many0(
-        block(preceded(keyword(Result), many0(valtype))),
+        par(preceded(keyword(Result), many0(valtype))),
         Vec::new(),
         |mut v, mut i| { v.append(&mut i); v }
     )(i)
 }
 
 #[inline]
-pub fn resulttype<'a, I1: 'a, E1: ParseError<I1> + 'a, I2: 'a>(i: I1) -> IResult<I1, ValType, E1>
-    where
-        I1: ParserInput<'a, I2>,
-        I2: LexerInput<'a>, {
-    block(preceded(keyword(Result), valtype))(i)
+pub fn resulttype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, ValType, I::Error>
+    where I::Inner: LexerInput<'a>
+{
+    par(preceded(keyword(Result), valtype))(i)
 }
 
 //

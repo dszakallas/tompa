@@ -27,7 +27,7 @@ pub enum Sx {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct MemArg {
+pub struct Memarg {
     pub offset: u32,
     pub align: u32,
 }
@@ -96,6 +96,8 @@ pub type TableIdx = u32;
 pub type MemIdx = u32;
 
 pub type LabelIdx = u32;
+
+pub type LocalIdx = u32;
 
 pub type GlobalIdx = u32;
 

@@ -2,7 +2,7 @@ use nom::{InputTake, InputLength, Slice, InputIter, IResult};
 use std::ops::{Range, RangeFrom, RangeFull, RangeTo, Try};
 use std::iter::Enumerate;
 use nom::error::{ParseError, ErrorKind};
-use nom::combinator::map_res;
+
 use std::option::NoneError;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -121,6 +121,12 @@ impl<'a, I: 'a> InputIter for Input<'a, I> {
         }
     }
 }
+
+/// Helper trait for associating an Error type.
+pub trait WithParseError: Sized {
+    type Error: ParseError<Self>;
+}
+
 //
 // pub fn eq<I, Error: ParseError<I>, Item>(item: Item) -> impl Fn(I) -> IResult<I, Item, Error>
 //     where
