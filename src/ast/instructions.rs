@@ -2,18 +2,6 @@ use super::types::*;
 
 use crate::defs;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Load {
-    pub valtype: ValType,
-    pub storage_size: Option<(u32, Sx)>
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Store {
-    pub valtype: ValType,
-    pub storage_size: Option<u32>
-}
-
 macro_rules! def_instructions {
     ($($id:ident { params: ($($arg_key:ident: $arg_tpe:ty),*), $($_rest:tt)* }),*) => {
         $(

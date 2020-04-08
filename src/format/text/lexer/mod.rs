@@ -16,7 +16,7 @@ use nom::sequence::{delimited, pair, preceded, terminated, tuple, Tuple};
 use nom_locate::{LocatedSpan};
 
 use keyword::Keyword;
-use keyword::KEYWORDS_HASH;
+use keyword::KEYWORDS_PHF;
 use std::option::NoneError;
 use crate::format::input::WithParseError;
 
@@ -83,7 +83,7 @@ pub struct NumParts<I> {
     pub e: Option<(Option<char>, Vec<I>)>
 }
 
-/// Blanket for traits required by the lexer
+/// Blanket trait for traits required by the lexer
 pub trait LexerInput<'a>: Clone
     + PartialEq
     + Slice<RangeFrom<usize>>
@@ -195,7 +195,7 @@ pub fn keyword<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Keyword, I::Error
     alt((
         value(Keyword::AlignEqU32, preceded(tag("align="), idchar)),
         value(Keyword::OffsetEqU32, preceded(tag("offset="), idchar)),
-        map_res(idchar, |kw: I| match KEYWORDS_HASH.get(kw.as_str()) {
+        map_res(idchar, |kw: I| match KEYWORDS_PHF.get(kw.as_str()) {
             Some(kw) => Ok(*kw),
             _ => Err(NoneError)
         })

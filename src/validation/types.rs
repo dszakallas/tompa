@@ -4,7 +4,7 @@ use super::*;
 mod test {
     use super::*;
 
-    use crate::syntax::ValType::*;
+    use crate::ast::ValType::*;
 
     #[test]
     fn test_limits_rule() {

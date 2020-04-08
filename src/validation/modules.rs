@@ -3,7 +3,7 @@ use std::ops::{Add};
 
 use im_rc;
 
-use crate::syntax::*;
+use crate::ast::*;
 use crate::validation::types::*;
 
 use super::*;
@@ -11,7 +11,7 @@ use super::*;
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::syntax;
+    use crate::ast;
 
     #[test]
     fn test_function_rule() {

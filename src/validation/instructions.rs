@@ -1,5 +1,5 @@
 use std::iter::FromIterator;
-use crate::syntax::*;
+use crate::ast::*;
 use std::collections::{HashMap};
 use ena::unify::{UnificationTable, UnifyKey, EqUnifyValue, InPlace};
 use std::convert::TryFrom;
@@ -7,70 +7,147 @@ use std::convert::TryFrom;
 use phf::phf_map;
 use super::*;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Load {
-    pub valtype: ValType,
-    pub storage_size: Option<(u32, Sx)>
+trait TypeInfo {
+    type Value;
+    type Parameter;
+    fn type_info() -> Self::Value;
 }
 
-macro_rules! def_mem_load_instr_rule_multi {
-    ($($instr:ty: $valtype:expr, $storage_size:expr, $key: expr);*) => {
-        $(
-            static MEM_LOAD_TYPE_INFO: phf::Map<&str, Load> = phf_map! {
-                $key => Load { valtype: $valtype, storage_size: $storage_size }
-            };
-        )*
-        $(
-            def_rule!(Context |- $instr => ParamFuncType, |syntax:&$instr, _, context: &Context| -> WrappedResult<ParamFuncType> {
-                check_load(&syntax.memarg, &MEM_LOAD_TYPE_INFO[$key], context)
-            });
-        )*
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Load {
+    pub valtype: ValType,
+    pub storage: Option<(u32, Sx)>,
+    pub memarg: Option<>
+}
+
+impl TypeInfo for I32Load {
+    type Value = Load;
+    type Parameter = Memarg;
+
+    fn type_info() -> Self::Value {
+        Load { valtype: ValType::I32, storage: None }
     }
 }
 
-def_mem_load_instr_rule_multi! {
-    lsinstr!(i32load, Keyword::I32Load, Load, ValType::I32, None, 4);
-lsinstr!(i64load, Keyword::I64Load, Load, ValType::I64, None, 8);
-lsinstr!(f32load, Keyword::F32Load, Load, ValType::F32, None, 4);
-lsinstr!(f64load, Keyword::F64Load, Load, ValType::F64, None, 8);
-lsinstr!(i32load8_s, Keyword::I32Load8S, Load, ValType::I32, Some((8, Sx::S)), 1);
-lsinstr!(i32load8_u, Keyword::I32Load8U, Load, ValType::I32, Some((8, Sx::U)), 1);
-lsinstr!(i32load16_s, Keyword::I32Load16S, Load, ValType::I32, Some((16, Sx::S)), 2);
-lsinstr!(i32load16_u, Keyword::I32Load16U, Load, ValType::I32, Some((16, Sx::U)), 2);
-lsinstr!(i64load8_s, Keyword::I64Load8S, Load, ValType::I64, Some((8, Sx::S)), 1);
-lsinstr!(i64load8_u, Keyword::I64Load8U, Load, ValType::I64, Some((8, Sx::U)), 1);
-lsinstr!(i64load16_s, Keyword::I64Load16S, Load, ValType::I64, Some((16, Sx::S)), 2);
-lsinstr!(i64load16_u, Keyword::I64Load16U, Load, ValType::I64, Some((16, Sx::U)), 2);
-lsinstr!(i64load32_s, Keyword::I64Load32S, Load, ValType::I64, Some((32, Sx::S)), 4);
-lsinstr!(i64load32_u, Keyword::I64Load32U, Load, ValType::I64, Some((32, Sx::U)), 4);
-lsinstr!(i32store, Keyword::I32Store, Store, ValType::I32, None, 4);
-lsinstr!(i64store, Keyword::I64Store, Store, ValType::I64, None, 8);
-lsinstr!(f32store, Keyword::F32Store, Store, ValType::F32, None, 4);
-lsinstr!(f64store, Keyword::F64Store, Store, ValType::F64, None, 8);
-lsinstr!(i32store8, Keyword::I32Store8, Store, ValType::I32, Some(8), 1);
-lsinstr!(i32store16, Keyword::I32Store16, Store, ValType::I32, Some(16), 2);
-lsinstr!(i64store8, Keyword::I64Store8, Store, ValType::I64, Some(8), 1);
-lsinstr!(i64store16, Keyword::I64Store16, Store, ValType::I64, Some(16), 2);
-lsinstr!(i64store32, Keyword::I64Store32, Store, ValType::I64, Some(32), 4);
-    I32Load: "i32.load" -> Load { valtype: ValType }
-    I32Load: ValType::I32, None, "i32.load"
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct StoreType {
+    pub valtype: ValType,
+    pub storage_size: Option<u32>
 }
+
+impl<I> Type for I where I: TypeInfo<Value=Load> {
+    type Value = ParamFuncType;
+    type Parameters = ();
+    type Context = Context;
+
+    fn check(&self, parameters: &Self::Parameters, context: &Self::Context) -> Result<Self::Value, TypeError> {
+        let type_info = Self::type_info();
+        let memarg = self.parameter();
+        let size = if let Some((size, _sx)) = type_info.storage {
+            size / 8
+        } else {
+            type_info.valtype.size()
+        };
+        if 1u32 << memarg.align > size {
+            Err(TypeError { syntax: "Load".to_owned() })
+        } else {
+            Ok(ParamFuncType { parameters: vec![ParamType::Const(ValType::I32)], results: vec![ParamType::Const(self.valtype)] })
+        }
+    }
+}
+
+def_rule!(Context |- Nop => ParamFuncType, |_, _, _| Ok(Default::default()));
+
+def_rule!(
+    Context |- Unreachable => ParamFuncType,
+    |_, _, _| Ok(ParamFuncType { parameters: vec![ParamType::Star], results: vec![ParamType::Star] })
+);
+
+impl Type for Instruction {
+    type Value = ParamFuncType;
+    type Parameters = Memarg;
+    type Context = Context;
+
+    fn check(&self, parameters: &Self::Parameters, context: &Self::Context) -> Result<Self::Value, TypeError> {
+        match self {
+            Instruction::I32Load(instr) => instr.check(&(), &context),
+            _ => unimplemented!()
+        }
+    }
+}
+
+// impl<I: InstructionType> Type for I
+// where
+//     <I as InstructionType>::Value: Type<Context = Context, Value = ParamFuncType>,
+// {
+//     type Value = ParamFuncType;
+//     type Parameters = ();
+//     type Context = Context;
+//
+//     #[inline]
+//     fn check(&self, parameters: &Self::Parameters, context: &Self::Context) -> Result<Self::Value, TypeError> {
+//         Self::instruction_type().check(self.extract_params(), context)
+//     }
+// }
+
+
+// macro_rules! def_instructions {
+//     ($($id:ident {
+//         params: ($($arg_key:ident: $arg_tpe:ty),*),
+//         text: $_text:expr,
+//         opcode: $_opcode:expr,
+//         parse: $_parse:expr,
+//         check: $valid_id:ident $init:tt,
+//         $($_rest:tt)*
+//     }),*) => {
+//         $(
+//             def_instr_rule!(
+//                 Context |- $id => ParamFuncType,
+//                 |syntax: &$id, _, context: &Context| -> WrappedResult<ParamFuncType> {
+//                     self.validation_tpe.check($($arg_key,)* context)
+//                 //check_load(&syntax.memarg, &MEM_LOAD_TYPE_INFO[$key], context)
+//                 }
+//             );
+//         )*
+//         $(
+//             #[derive(Clone, Debug, PartialEq)]
+//             pub struct $id {
+//                 $(pub $arg_key: $arg_tpe),*
+//             }
+//         )*
+//     }
+// }
+
+// macro_rules! def_mem_load_instr_rule_multi {
+//     ($($instr:ty: $valtype:expr, $storage_size:expr, $key: expr);*) => {
+//         $(
+//             static MEM_LOAD_TYPE_INFO: phf::Map<&str, Load> = phf_map! {
+//                 $key => Load { valtype: $valtype, storage_size: $storage_size }
+//             };
+//         )*
+//         $(
+//             def_rule!(Context |- $instr => ParamFuncType, |syntax:&$instr, _, context: &Context| -> WrappedResult<ParamFuncType> {
+//                 check_load(&syntax.memarg, &MEM_LOAD_TYPE_INFO[$key], context)
+//             });
+//         )*
+//     }
+// }
 
 
 // def_rule!(Context |- Load => ParamFuncType, load_rule);
 //
-fn check_load(arg: &Memarg, type_info: &Load, _context: &Context) -> WrappedResult<ParamFuncType> {
-    let size = if let Some((size, _sx)) = type_info.storage_size {
-        size / 8
-    } else {
-        type_info.valtype.size()
-    };
-    if 1u32 << arg.align > size {
-        None?
-    } else {
-        Ok(ParamFuncType { parameters: vec![ParamType::Const(ValType::I32)], results: vec![ParamType::Const(type_info.valtype)] })
-    }
-}
+// fn check_load(arg: &Memarg, type_info: &Load, _context: &Context) -> WrappedResult<ParamFuncType> {
+//     let size = if let Some((size, _sx)) = type_info.storage_size {
+//         size / 8
+//     } else {
+//         type_info.valtype.size()
+//     };
+//     if 1u32 << arg.align > size {
+//         None?
+//     } else {
+//         Ok(ParamFuncType { parameters: vec![ParamType::Const(ValType::I32)], results: vec![ParamType::Const(type_info.valtype)] })
+//     }
+// }
 //
 // def_rule!(StoreRule: Store => ParamFuncType, store_rule);
 //
@@ -92,157 +169,152 @@ fn check_load(arg: &Memarg, type_info: &Load, _context: &Context) -> WrappedResu
 // }
 
 // TODO memory grow, size
-
-def_rule!(
-    Context |- Const => ParamFuncType,
-    |syntax: &Const, _, _| Ok(ParamFuncType { parameters: vec![], results: vec![ParamType::Const(syntax.valtype())] })
-);
 //
-// def_rule!(UnopRule: Unop => ParamFuncType, unop_rule);
+// def_rule!(
+//     Context |- Const => ParamFuncType,
+//     |syntax: &Const, _, _| Ok(ParamFuncType { parameters: vec![], results: vec![ParamType::Const(syntax.valtype())] })
+// );
+// //
+// // def_rule!(UnopRule: Unop => ParamFuncType, unop_rule);
+// //
+// // fn unop_rule(syntax: &Unop, _rule: &UnopRule, context: &Context) -> WrappedResult<ParamFuncType> {
+// //     Ok(ParamFuncType { parameters: vec![valtype], results: vec![valtype] })
+// // }
 //
-// fn unop_rule(syntax: &Unop, _rule: &UnopRule, context: &Context) -> WrappedResult<ParamFuncType> {
-//     Ok(ParamFuncType { parameters: vec![valtype], results: vec![valtype] })
+// def_rule!(Context |- Instr => ParamFuncType, instr_rule);
+//
+// fn instr_rule(syntax: &Instr, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     Ok(match syntax {
+//         Instr::Const(s) => s.check(&(), context)?,
+//         //Instr::Load(s) => s.check(&(), context)?,
+//         //Instr::Store(s) => s.check(&(), context)?,
+//         Instr::Nop(s) => s.check(&(), context)?,
+//         Instr::Unreachable(s) => s.check(&(), context)?,
+//         Instr::Block(s) => s.check(&(), context)?,
+//         Instr::Loop(s) => s.check(&(), context)?,
+//         Instr::IfElse(s) => s.check(&(), context)?,
+//         _ => unimplemented!(),
+//     })
 // }
+//
 
-def_rule!(Context |- Instr => ParamFuncType, instr_rule);
-
-fn instr_rule(syntax: &Instr, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    Ok(match syntax {
-        Instr::Const(s) => s.check(&(), context)?,
-        //Instr::Load(s) => s.check(&(), context)?,
-        //Instr::Store(s) => s.check(&(), context)?,
-        Instr::Nop(s) => s.check(&(), context)?,
-        Instr::Unreachable(s) => s.check(&(), context)?,
-        Instr::Block(s) => s.check(&(), context)?,
-        Instr::Loop(s) => s.check(&(), context)?,
-        Instr::IfElse(s) => s.check(&(), context)?,
-        _ => unimplemented!(),
-    })
-}
-
-def_rule!(Context |- Nop => ParamFuncType, |_, _, _| Ok(Default::default()));
-
-def_rule!(
-    Context |- Unreachable => ParamFuncType,
-    |_, _, _| Ok(ParamFuncType { parameters: vec![ParamType::Star], results: vec![ParamType::Star] })
-);
-
-def_rule!(Context |- Block => ParamFuncType, block_rule);
-
-fn block_rule(syntax: &Block, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    let inner_context =
-        check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax))?;
-
-    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.instrs, &inner_context, false)
-}
-
-def_rule!(Context |- Loop => ParamFuncType, loop_rule);
-
-fn loop_rule(syntax: &Loop, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    let inner_context =
-        check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax))?;
-
-    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.instrs, &inner_context, false)
-}
-
-def_rule!(Context |- IfElse => ParamFuncType, if_else_rule);
-
-fn if_else_rule(syntax: &IfElse, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    let inner_context =
-        check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax))?;
-
-    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.if_instrs, &inner_context, false)?;
-    check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.else_instrs, &inner_context, false)
-}
-
-def_rule!(Context |- Br => ParamFuncType, br_rule);
-
-fn br_rule(syntax: &Br, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    let label_val = check_label(syntax.labelidx, context)?;
-    let parameters = vec![ParamType::Star].into_iter()
-        .chain(label_val.into_iter().map(|v| ParamType::Const(v)))
-        .collect();
-
-    Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
-}
-
-def_rule!(Context |- BrIf => ParamFuncType, br_if_rule);
-
-fn br_if_rule(syntax: &BrIf, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    let label_val = check_label(syntax.labelidx, context)?;
-    let br_r = label_val.map(|v| ParamType::Const(v));
-    let parameters = br_r.iter().cloned()
-        .chain(vec![ParamType::Const(ValType::I32)].into_iter())
-        .collect();
-    let results = Vec::from_iter(br_r.into_iter());
-
-    Ok(ParamFuncType { parameters, results })
-}
-
-def_rule!(Context |- BrTable => ParamFuncType, br_table_rule);
-
-fn br_table_rule(syntax: &BrTable, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    let n = syntax.labelidxs.len();
-    if n == 0 {
-        return Err(NoneError)?
-    }
-    let label_val = check_label(syntax.labelidxs[n - 1], context)?;
-    for idx in &syntax.labelidxs[..n-1] {
-        let other_label_val = check_label(*idx, context)?;
-        if label_val != other_label_val {
-            return Err(NoneError)?
-        }
-    }
-    let br_r = label_val.map(|v| ParamType::Const(v));
-    let parameters = vec![ParamType::Star].into_iter()
-        .chain(br_r.into_iter())
-        .chain(vec![ParamType::Const(ValType::I32)])
-        .collect();
-    Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
-}
-
-def_rule!(Context |- Return => ParamFuncType, return_rule);
-
-fn return_rule(_syntax: &Return, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    if let Some(ret) = context.ret {
-        let parameters = vec![ParamType::Star].into_iter()
-            .chain(ret.into_iter().map(|v| ParamType::Const(v)))
-            .collect();
-        return Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
-    };
-    Err(NoneError)?
-
-}
-
-def_rule!(Context |- Call => ParamFuncType, call_rule);
-
-fn call_rule(syntax: &Call, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    let n = context.funcs.len();
-    let i = syntax.fidx as usize;
-    if i >= n {
-        return Err(NoneError)?
-    }
-    Ok(ParamFuncType::from(context.funcs[i].clone()))
-}
-
-def_rule!(Context |- CallIndirect => ParamFuncType, call_indirect_rule);
-
-fn call_indirect_rule(syntax: &CallIndirect, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
-    if context.tables.len() == 0 {
-        return Err(NoneError)?
-    }
-
-    let n = context.types.len();
-    let i = syntax.tidx as usize;
-    if i >= n {
-        return Err(NoneError)?
-    }
-
-    let mut res = ParamFuncType::from(context.types[i].clone());
-    res.parameters.push(ParamType::Const(ValType::I32));
-
-    Ok(res)
-}
+//
+// def_rule!(Context |- Block => ParamFuncType, block_rule);
+//
+// fn block_rule(syntax: &Block, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     let inner_context =
+//         check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax))?;
+//
+//     check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.instrs, &inner_context, false)
+// }
+//
+// def_rule!(Context |- Loop => ParamFuncType, loop_rule);
+//
+// fn loop_rule(syntax: &Loop, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     let inner_context =
+//         check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax))?;
+//
+//     check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.instrs, &inner_context, false)
+// }
+//
+// def_rule!(Context |- IfElse => ParamFuncType, if_else_rule);
+//
+// fn if_else_rule(syntax: &IfElse, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     let inner_context =
+//         check_block_context(&syntax.result, context).ok_or_else(|| type_error!(syntax))?;
+//
+//     check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.if_instrs, &inner_context, false)?;
+//     check_instruction_seq(vec![], Vec::from_iter(syntax.result), &syntax.else_instrs, &inner_context, false)
+// }
+//
+// def_rule!(Context |- Br => ParamFuncType, br_rule);
+//
+// fn br_rule(syntax: &Br, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     let label_val = check_label(syntax.labelidx, context)?;
+//     let parameters = vec![ParamType::Star].into_iter()
+//         .chain(label_val.into_iter().map(|v| ParamType::Const(v)))
+//         .collect();
+//
+//     Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
+// }
+//
+// def_rule!(Context |- BrIf => ParamFuncType, br_if_rule);
+//
+// fn br_if_rule(syntax: &BrIf, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     let label_val = check_label(syntax.labelidx, context)?;
+//     let br_r = label_val.map(|v| ParamType::Const(v));
+//     let parameters = br_r.iter().cloned()
+//         .chain(vec![ParamType::Const(ValType::I32)].into_iter())
+//         .collect();
+//     let results = Vec::from_iter(br_r.into_iter());
+//
+//     Ok(ParamFuncType { parameters, results })
+// }
+//
+// def_rule!(Context |- BrTable => ParamFuncType, br_table_rule);
+//
+// fn br_table_rule(syntax: &BrTable, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     let n = syntax.labelidxs.len();
+//     if n == 0 {
+//         return Err(NoneError)?
+//     }
+//     let label_val = check_label(syntax.labelidxs[n - 1], context)?;
+//     for idx in &syntax.labelidxs[..n-1] {
+//         let other_label_val = check_label(*idx, context)?;
+//         if label_val != other_label_val {
+//             return Err(NoneError)?
+//         }
+//     }
+//     let br_r = label_val.map(|v| ParamType::Const(v));
+//     let parameters = vec![ParamType::Star].into_iter()
+//         .chain(br_r.into_iter())
+//         .chain(vec![ParamType::Const(ValType::I32)])
+//         .collect();
+//     Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
+// }
+//
+// def_rule!(Context |- Return => ParamFuncType, return_rule);
+//
+// fn return_rule(_syntax: &Return, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     if let Some(ret) = context.ret {
+//         let parameters = vec![ParamType::Star].into_iter()
+//             .chain(ret.into_iter().map(|v| ParamType::Const(v)))
+//             .collect();
+//         return Ok(ParamFuncType { parameters, results: vec![ParamType::Star] })
+//     };
+//     Err(NoneError)?
+//
+// }
+//
+// def_rule!(Context |- Call => ParamFuncType, call_rule);
+//
+// fn call_rule(syntax: &Call, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     let n = context.funcs.len();
+//     let i = syntax.fidx as usize;
+//     if i >= n {
+//         return Err(NoneError)?
+//     }
+//     Ok(ParamFuncType::from(context.funcs[i].clone()))
+// }
+//
+// def_rule!(Context |- CallIndirect => ParamFuncType, call_indirect_rule);
+//
+// fn call_indirect_rule(syntax: &CallIndirect, _param: &(), context: &Context) -> WrappedResult<ParamFuncType> {
+//     if context.tables.len() == 0 {
+//         return Err(NoneError)?
+//     }
+//
+//     let n = context.types.len();
+//     let i = syntax.tidx as usize;
+//     if i >= n {
+//         return Err(NoneError)?
+//     }
+//
+//     let mut res = ParamFuncType::from(context.types[i].clone());
+//     res.parameters.push(ParamType::Const(ValType::I32));
+//
+//     Ok(res)
+// }
 
 fn check_label(labelidx: LabelIdx, context: &Context) -> WrappedResult<Option<ValType>> {
     let n = context.labels.len();
@@ -254,7 +326,7 @@ fn check_label(labelidx: LabelIdx, context: &Context) -> WrappedResult<Option<Va
 }
 
 // FIXME implement const constraint
-pub(in crate::validation) fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs: &Vec<Instr>, context: &Context, _is_const: bool) -> WrappedResult<ParamFuncType> {
+pub(in crate::validation) fn check_instruction_seq(parameters: Vec<ValType>, results: Vec<ValType>, instrs: &Vec<Instruction>, context: &Context, _is_const: bool) -> WrappedResult<ParamFuncType> {
     let mut param_stack = OpStack::from(parameters.clone());
 
     for instr in instrs.iter() {
@@ -453,20 +525,20 @@ fn check_block_context(label: &Option<ValType>, context: &Context) -> Option<Con
 mod test {
     use super::*;
 
-    use crate::syntax::ValType::*;
+    use crate::ast::ValType::*;
 
-    #[test]
-    fn test_block_rule() {
-        let t1 = Block { result: None, instrs: vec![] }
-            .check(&(), &Default::default()).unwrap();
-
-        assert_eq!(t1, ParamFuncType { parameters: vec![], results: vec![] });
-
-        let t2 = Block { result: Some(I64), instrs: vec![Instr::Const(Const::I64(256))] }
-            .check(&(), &Default::default()).unwrap();
-
-        assert_eq!(t2, ParamFuncType { parameters: vec![], results: vec![ParamType::Const(ValType::I64)] });
-    }
+    // #[test]
+    // fn test_block_rule() {
+    //     let t1 = Block { result: None, instrs: vec![] }
+    //         .check(&(), &Default::default()).unwrap();
+    //
+    //     assert_eq!(t1, ParamFuncType { parameters: vec![], results: vec![] });
+    //
+    //     let t2 = Block { result: Some(I64), instrs: vec![Instr::Const(Const::I64(256))] }
+    //         .check(&(), &Default::default()).unwrap();
+    //
+    //     assert_eq!(t2, ParamFuncType { parameters: vec![], results: vec![ParamType::Const(ValType::I64)] });
+    // }
 
     #[test]
     fn test_stack_merge() {

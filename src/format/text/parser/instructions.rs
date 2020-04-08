@@ -1,12 +1,11 @@
 use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
 
-
 use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
 use nom::error::{ParseError, ErrorKind};
 
 use nom::multi::{fold_many0, many0, many1};
 
-use crate::syntax::*;
+use crate::ast::*;
 
 use crate::format::text::parser::{IdCtx, ParserInput, id, keyword, WithWrappedInput, anykeyword, par, parc};
 
@@ -107,7 +106,7 @@ macro_rules! def_instruction_parser_helpers {
     ($($id:ident { params: ($($pname:ident: $pty:ty),*), text: $_text:expr, opcode: $opcode:expr, parse: $parse_tpe:ident($($arg:expr),*), $($_rest:tt)*}),*) => {
         static INSTR_PARSERS: phf::Map<i32, InstrParseType> = phf_map! {
             $(
-                $opcode => InstrParseType::$parse_tpe($($arg,)* |$($pname: $pty),*| crate::syntax::Instruction::$id(crate::syntax::$id { $($pname),* }))
+                $opcode => InstrParseType::$parse_tpe($($arg,)* |$($pname: $pty),*| crate::ast::Instruction::$id(crate::ast::$id { $($pname),* }))
             ),*
         };
     }

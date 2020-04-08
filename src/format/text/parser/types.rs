@@ -7,7 +7,7 @@ use nom::error::{ParseError};
 use nom::multi::{many0, fold_many0};
 use nom::sequence::{pair, preceded, terminated, tuple};
 
-use crate::syntax::{FuncRef, GlobalType, Limits, MemType, Mut, TableType, ValType};
+use crate::ast::{FuncRef, GlobalType, Limits, MemType, Mut, TableType, ValType};
 
 use crate::format::text::parser::values::uxx;
 use crate::format::text::parser::{keyword, par, ParserInput, id};

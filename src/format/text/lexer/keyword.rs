@@ -40,7 +40,7 @@ macro_rules! def_keywords {
             $($id $(=$opcode as isize)*),*
         }
 
-        pub static KEYWORDS_HASH: phf::Map<&'static str, Keyword> = phf_map! {
+        pub static KEYWORDS_PHF: phf::Map<&'static str, Keyword> = phf_map! {
             $($kw => Keyword::$id),*
         };
     };

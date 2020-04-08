@@ -6,7 +6,7 @@ use std::option::NoneError;
 
 use im_rc;
 
-use crate::syntax::*;
+use crate::ast::*;
 
 #[derive(Debug)]
 pub struct TypeError {
@@ -112,6 +112,6 @@ macro_rules! some_if {
 
 mod types;
 
-//mod instructions;
+// mod instructions;
 //
 // mod modules;

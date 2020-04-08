@@ -17,4 +17,5 @@ num = "0.2.0"
 ena = "0.13.1"
 lexical-core = { version = "0.6.0", features = ["radix"] }
 phf = { version = "0.7", features = ["macros"] }
+unicode-width = "0.1.7"
 
