@@ -1,12 +1,10 @@
 #![macro_use]
 
-use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
+use nom::{AsChar as NomAsChar, InputIter, InputTakeAtPosition, IResult};
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while_m_n};
-use nom::character::complete::{anychar, char, not_line_ending};
-use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
-
-use nom::error::{ParseError, ErrorKind};
+use nom::character::complete::{char};
+use nom::combinator::{map, map_res, opt, peek, value};
 
 use num::{Signed, Unsigned};
 
@@ -14,7 +12,7 @@ use nom::sequence::{delimited, pair};
 
 use num::FromPrimitive;
 use lexical_core::Integer;
-use crate::format::text::lexer::{AsChar, Token, NumVariant, hex_num, NumParts, dec_num, AsStr, hex_num_digits};
+use crate::format::text::lexer::{AsChar, NumVariant, hex_num, NumParts, dec_num, hex_num_digits};
 
 use crate::format::text::lexer::LexerInput;
 use crate::format::text::lexer::Num;
@@ -26,7 +24,6 @@ use std::convert::TryFrom;
 pub trait FromSigned: Unsigned where Self::Repr: Signed {
     type Repr;
 
-    #[inline]
     fn get(r: Self::Repr) -> Self;
 }
 
@@ -349,16 +346,7 @@ fn try_parse_hex_float_num<'a, Out: LcFloat, I: LexerInput<'a> + 'a>(s: &Option<
 
 #[cfg(test)]
 mod test {
-    use nom::error::{ErrorKind};
     use super::*;
-
-    type FastError<T> = (T, ErrorKind);
-
-    macro_rules! parsed_to_end {
-       ($p: expr, $str: expr) => {
-           terminated::<&str, _, _, FastError<&str>, _, _>($p, not(anychar))($str)
-       };
-    }
 
     #[test]
     fn test_parsed_string() {

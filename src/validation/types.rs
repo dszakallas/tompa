@@ -75,7 +75,7 @@ fn limits_rule(syntax: &Limits, params: &LimitsBound, _ctx: &()) -> WrappedResul
     if syntax.min <= params.bound && syntax.max.map_or(true, |max| syntax.min <= max && max <= params.bound) {
         Ok(())
     } else {
-        None?
+        Err(TypeError)
     }
 }
 
@@ -83,23 +83,21 @@ def_rule!(Limits(LimitsBound) => (), limits_rule);
 
 #[inline]
 fn func_type_rule(syntax: &FuncType, _params: &(), _ctx: &()) -> WrappedResult<()> {
-    if syntax.results.len() <= 1 { Ok(()) } else { None? }
+    if syntax.results.len() <= 1 { Ok(()) } else { Err(TypeError) }
 }
 
 def_rule!(FuncType => (), func_type_rule);
 
 #[inline]
 fn table_type_rule(syntax: &TableType, _params: &(), ctx: &()) -> WrappedResult<()> {
-    syntax.limits.check(&LimitsBound { bound: 1 << 16 }, ctx)?;
-    Ok(())
+    syntax.limits.check(&LimitsBound { bound: 1 << 16 }, ctx)
 }
 
 def_rule!(TableType => (), table_type_rule);
 
 #[inline]
 fn mem_type_rule(syntax: &MemType, _params: &(), ctx: &()) -> WrappedResult<()> {
-    syntax.limits.check(&LimitsBound { bound: 1 << 16 }, ctx)?;
-    Ok(())
+    syntax.limits.check(&LimitsBound { bound: 1 << 16 }, ctx)
 }
 
 def_rule!(MemType => (), mem_type_rule);
@@ -109,8 +107,7 @@ def_rule!(GlobalType => (), |_, _ ,_| Ok(()));
 macro_rules! def_extern_type_rule {
     ($syntax:ident) => {
         def_rule!($syntax => (), |syntax: &$syntax, _, context: &()| {
-            syntax.0.check(&(), context)?;
-            Ok(())
+            syntax.0.check(&(), context)
         });
     };
 }

@@ -1,8 +1,7 @@
-use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice, Offset};
+use nom::{IResult};
 use nom::branch::alt;
 
-use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
-use nom::error::{ParseError};
+use nom::combinator::{map, opt, value};
 
 use nom::multi::{many0, fold_many0};
 use nom::sequence::{pair, preceded, terminated, tuple};
@@ -15,8 +14,8 @@ use crate::format::text::lexer::{LexerInput};
 use crate::format::text::lexer::keyword::Keyword::*;
 
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct FuncType<'a, I> {
-    pub parameters: Vec<(Option<&'a I>, ValType)>,
+pub struct FuncType<'a> {
+    pub parameters: Vec<(Option<&'a str>, ValType)>,
     pub results: Vec<ValType>,
 }
 
@@ -70,18 +69,19 @@ pub fn memtype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, MemType, I::Erro
 }
 
 #[inline]
-pub fn functype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, FuncType<'a, I::Inner>, I::Error>
+pub fn functype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, FuncType<'a>, I::Error>
     where I::Inner: LexerInput<'a>
 {
     map(par(preceded(keyword(Func), tuple((params::<I>, results::<I>)))), |(parameters, results)| {
-        FuncType::<'a, I::Inner> { parameters, results }
+        FuncType::<'a> { parameters, results }
     })(i)
 }
 
 #[inline]
-pub fn params<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Vec<(Option<&'a I::Inner>, ValType)>, I::Error>
+pub fn params<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Vec<(Option<&'a str>, ValType)>, I::Error>
     where I::Inner: LexerInput<'a>
 {
+    //par(map(pair(id, valtype), |(id, valtype)| vec![(Some(id), valtype)]))(i)
     fold_many0(
         par(preceded(keyword(Param), alt((
             map(pair(id, valtype), |(id, valtype)| vec![(Some(id), valtype)]),
@@ -110,48 +110,48 @@ pub fn resulttype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, ValType, I::E
     par(preceded(keyword(Result), valtype))(i)
 }
 
-//
-// #[cfg(test)]
-// mod test {
-//
-//     use nom::error::{ErrorKind};
-//
-//
-//     use super::*;
-//
-//     type FastError<T> = (T, ErrorKind);
-//
-//     #[test]
-//     fn test_valtype() {
-//         assert_eq!(valtype::<&str, FastError<&str>>("i32"), Ok(("", ValType::I32)));
-//     }
-//
-//     #[test]
-//     fn test_globaltype() {
-//         assert_eq!(
-//             globaltype::<'static, &str, FastError<&str>>("f64"),
-//             Ok(("", GlobalType { mut_: Mut::Const, valtype: ValType::F64 }))
-//         );
-//         assert_eq!(
-//             globaltype::<'static, &str, FastError<&str>>("(mut f32)"),
-//             Ok(("", GlobalType { mut_: Mut::Var, valtype: ValType::F32 }))
-//         );
-//     }
-//
-//     #[test]
-//     fn test_tabletype() {
-//         assert_eq!(
-//             tabletype::<'static, &str, FastError<&str>>("13 0x001F funcref o"),
-//             Ok(("o", TableType { limits: Limits { min: 13u32, max: Some(31u32) }, elemtype: FuncRef {} }))
-//         );
-//         tabletype::<'static, &str, FastError<&str>>("-12 0x001F funcref").unwrap_err();
-//     }
-//
-//     #[test]
-//     fn test_functype() {
-//         assert_eq!(
-//             functype::<'static, &str, FastError<&str>>("(func (param $abcd i32) (result f64))("),
-//             Ok(("(", FuncType { parameters: vec![ValType::I32], results: vec![ValType::F64] }))
-//         )
-//     }
-// }
+
+#[cfg(test)]
+mod test {
+
+    use crate::format::input::Input;
+
+    use super::*;
+
+    #[test]
+    fn test_valtype() {
+
+        let t = lex!("i32").unwrap();
+
+        assert_eq!(consumed!(valtype, Input::new(&t)), Ok(ValType::I32));
+    }
+
+    #[test]
+    fn test_globaltype() {
+        {
+            let t = lex!("f64").unwrap();
+            assert_eq!(consumed!(globaltype, Input::new(&t)), Ok(GlobalType { mut_: Mut::Const, valtype: ValType::F64 }));
+        }
+        {
+            let t = lex!("(mut i64)").unwrap();
+            assert_eq!(consumed!(globaltype, Input::new(&t)), Ok(GlobalType { mut_: Mut::Var, valtype: ValType::I64 }));
+        }
+    }
+
+    #[test]
+    fn test_tabletype() {
+        let t = lex!("13 0x001F funcref").unwrap();
+
+        assert_eq!(consumed!(tabletype, Input::new(&t)), Ok(TableType { limits: Limits { min: 13u32, max: Some(31u32) }, elemtype: FuncRef {} }));
+    }
+
+
+    #[test]
+    fn test_functype() {
+        let t = lex!("(func (param $abcd i32) (result f64))").unwrap();
+
+        assert_eq!(consumed!(functype, Input::new(&t)),
+            Ok(FuncType { parameters: vec![(Some("$abcd"), ValType::I32)], results: vec![ValType::F64] })
+        );
+    }
+}

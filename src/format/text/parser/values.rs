@@ -3,7 +3,6 @@ use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, Input
 use nom::error::{ParseError, ErrorKind};
 use num::{Unsigned, Signed};
 use crate::format::text::lexer::{AsChar, Token, NumVariant, hex_num, NumParts, dec_num, AsStr, hex_num_digits, LexerInput, dec_num_digits};
-use nom::lib::std::option::NoneError;
 use crate::format::input::satisfies;
 use crate::format::text::parser::lexical::{parsed_uxx, parsed_string, parsed_ixx, parsed_fxx};
 use crate::format::text::parser::ParserInput;
@@ -17,24 +16,17 @@ use num::FromPrimitive;
 use crate::format::text::parser::lexical::FromSigned;
 use std::iter::FromIterator;
 
-type FastError<T> = (T, ErrorKind);
+use super::ParserError;
+
 
 #[cfg(test)]
 mod test {
-    use crate::format::input::{Input, WithParseError};
+    use crate::format::input::{Input};
     use crate::format::text::lexer::Token;
 
     use super::*;
-    use crate::format::text::parser::WithWrappedInput;
-
-    impl<'a> WithParseError for Input<'a, Token<&'a str>> {
-        type Error = (Input<'a, Token<&'a str>>, ErrorKind);
-    }
-
-    impl<'a> WithWrappedInput for Input<'a, Token<&str>> {
-        type Inner = &'a str;
-    }
-
+    //use crate::format::text::parser::test::*;
+  
     #[test]
     fn test_string() {
         string::<Input<Token<&str>>>(Input::from(&[Token::String("\"\"")][..])).unwrap();
@@ -49,7 +41,7 @@ pub fn string<'a, I: ParserInput<'a> + 'a>(token_i: I) -> IResult<I, String, I::
     let (token_i, i) = satisfies(|tok: &'a Token<I::Inner>| if let Token::String(lit) = tok {
         Ok(lit)
     } else {
-        Err(NoneError)
+        Err(ParserError)
     })(token_i)?;
 
     if let Ok((_i, parsed)) = parsed_string::<I::Inner>(i.clone()) {
@@ -65,7 +57,7 @@ pub fn uxx<'a, Out: Unsigned, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Out, 
     let (i, lexer_i) = satisfies(|tok: &'a Token<I::Inner>| if let Token::Num(lit, _) = tok {
         Ok(lit)
     } else {
-        Err(NoneError)
+        Err(ParserError)
     })(i)?;
 
     if let Ok((_, parsed)) = parsed_uxx::<Out, I::Inner>(lexer_i.clone()) {
@@ -84,7 +76,7 @@ pub fn ixx<'a, Out: Unsigned + FromSigned, I: ParserInput<'a> + 'a>(i: I) -> IRe
     let (i, lexer_i) = satisfies(|tok: &'a Token<I::Inner>| if let Token::Num(lit, _) = tok {
         Ok(lit)
     } else {
-        Err(NoneError)
+        Err(ParserError)
     })(i)?;
 
     if let Ok((_, parsed)) = parsed_ixx::<Out, I::Inner>(lexer_i.clone()) {
@@ -104,7 +96,7 @@ pub fn fxx<'a, Out, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Out, I::Error>
     let (i, preparsed) = satisfies(|tok: &'a Token<I::Inner>| if let Token::Num(_, num) = tok {
         Ok(num)
     } else {
-        Err(NoneError)
+        Err(ParserError)
     })(i)?;
 
     let p = parsed_fxx::<Out, I::Inner>(preparsed).map_err(|_| nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::MapRes)))?;

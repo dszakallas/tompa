@@ -1,9 +1,10 @@
 use nom::{InputTake, InputLength, Slice, InputIter, IResult};
-use std::ops::{Range, RangeFrom, RangeFull, RangeTo, Try};
+use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
 use std::iter::Enumerate;
 use nom::error::{ParseError, ErrorKind};
 
-use std::option::NoneError;
+use crate::format::text::parser::ParserError;
+
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Input<'a, I> {
@@ -21,6 +22,7 @@ impl<'a, I: 'a> Input<'a, I> {
         }
     }
 }
+
 
 impl<'a, I: 'a> InputLength for Input<'a, I> {
     #[inline]
@@ -162,13 +164,14 @@ pub fn pred<I, Error: ParseError<I>, P, Item>(p: P) -> impl Fn(I) -> IResult<I, 
 pub fn satisfies<I, Error: ParseError<I>, F, O>(f: F) -> impl Fn(I) -> IResult<I, O, Error>
     where
         I: Slice<RangeFrom<usize>> + InputIter,
-        F: Fn(<I as InputIter>::Item) -> Result<O, NoneError>
+        F: Fn(<I as InputIter>::Item) -> Result<O, ParserError>
 {
-    move |i: I| match (i).iter_elements().next().into_result().and_then(|t| f(t)) {
-        Ok(o) => Ok((i, o)),
-        Err(_) => Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::MapRes))),
-    }
-}
+    move |i: I| {
+        match (i).iter_elements().next().map_or_else(|| Err(ParserError), |t| f(t)) {
+            Ok(o) => Ok((i.slice(1..), o)),
+            Err(_) => Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::MapRes))),
+        }
+    }}
 
 impl<'a, I> From<&'a [I]> for Input<'a, I> {
     fn from(i: &'a [I]) -> Self {

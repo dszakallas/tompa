@@ -1,3 +1,5 @@
+#![macro_use]
+
 mod instructions;
 mod modules;
 mod types;

@@ -1,4 +1,3 @@
-#![feature(try_trait)]
 #![feature(proc_macro_hygiene)]
 #![feature(associated_type_bounds)]
 #![feature(trace_macros)]
@@ -10,9 +9,8 @@ extern crate phf;
 
 
 //pub mod span;
-pub(crate) mod defs;
-pub mod format;
 pub mod ast;
+pub mod format;
 pub mod validation;
 //pub mod execution;
 

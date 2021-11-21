@@ -3,23 +3,30 @@ use im_rc;
 use crate::format::input::{satisfies, WithParseError};
 use crate::format::text::lexer::keyword::Keyword;
 use crate::format::text::lexer::{LexerInput, Num, Token};
-use crate::ast::{
-    FuncRef, FuncType, GlobalType, Limits, MemType, Memarg, Mut, TableType, ValType,
-};
-use nom::error::ParseError;
+use crate::ast::FuncType;
 use nom::sequence::delimited;
 use nom::{IResult, InputIter, InputLength, Slice};
-use std::collections::HashMap;
+use core::fmt;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::ops::RangeFrom;
-use std::option::NoneError;
 
-mod instructions;
-mod lexical;
-mod types;
-mod values;
+use super::lexer::AsStr;
 
-/// The text format allows the use of symbolic identifiers in place of indices.
-/// To resolve these identifiers into concrete indices, some grammar production
+
+#[derive(Debug)]
+pub struct ParserError;
+
+impl Error for ParserError {}
+
+impl<'a> Display for ParserError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("lexer error"))
+    }
+}
+
+/// The text format allows the use of symbolic identifiers instead of indices.
+/// To resolve these identifiers, some grammar productions
 /// are indexed by an identifier context I as a synthesized attribute that
 /// records the declared identifiers in each index space. In addition, the
 /// context records the types defined in the module, so that parameter indices
@@ -40,8 +47,7 @@ pub trait WithWrappedInput {
     type Inner;
 }
 
-/// The parser is generic, and this trait provides the main abstraction for inputs
-/// that can be parsed.
+/// The main abstraction for parsable inputs.
 pub trait ParserInput<'a>:
     Clone
     + PartialEq
@@ -79,7 +85,7 @@ where
 {
     satisfies(move |tok: &'a Token<I::Inner>| match tok {
         Token::Keyword(i, kw) if *kw == keyword => Ok(i),
-        _ => Err(NoneError),
+        _ => Err(ParserError),
     })
 }
 
@@ -92,7 +98,7 @@ where
 {
     satisfies(move |tok: &'a Token<I::Inner>| match tok {
         Token::Keyword(i, kw) => Ok((i, kw)),
-        _ => Err(NoneError),
+        _ => Err(ParserError),
     })(i)
 }
 
@@ -103,18 +109,18 @@ where
 {
     satisfies(move |tok: &'a Token<I::Inner>| match tok {
         Token::Num(_, num) => Ok(num),
-        _ => Err(NoneError),
+        _ => Err(ParserError),
     })(i)
 }
 
 #[inline]
-pub fn id<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, &'a I::Inner, I::Error>
+pub fn id<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, &'a str, I::Error>
 where
     I::Inner: LexerInput<'a>,
 {
     satisfies(move |tok: &'a Token<I::Inner>| match tok {
-        Token::Id(i) => Ok(i),
-        _ => Err(NoneError),
+        Token::Id(i) => Ok(i.as_str()),
+        _ => Err(ParserError),
     })(i)
 }
 
@@ -128,18 +134,18 @@ where
 {
     delimited(
         satisfies(move |tok: &'a Token<_>| {
-            if let Token::LPar(_) = tok {
+            if let Token::LPar = tok {
                 Ok(())
             } else {
-                Err(NoneError)
+                Err(ParserError)
             }
         }),
         parser,
         satisfies(move |tok: &'a Token<_>| {
-            if let Token::RPar(_) = tok {
+            if let Token::RPar = tok {
                 Ok(())
             } else {
-                Err(NoneError)
+                Err(ParserError)
             }
         }),
     )
@@ -154,19 +160,50 @@ where
 {
     delimited(
         satisfies(move |tok: &'a Token<_>| {
-            if let Token::LPar(_) = tok {
+            if let Token::LPar = tok {
                 Ok(())
             } else {
-                Err(NoneError)
+                Err(ParserError)
             }
         }),
         parser,
         satisfies(move |tok: &'a Token<_>| {
-            if let Token::RPar(_) = tok {
+            if let Token::RPar = tok {
                 Ok(())
             } else {
-                Err(NoneError)
+                Err(ParserError)
             }
         }),
     )(i)
 }
+
+#[macro_use]
+#[cfg(test)]
+mod test {
+    
+    use nom::error::ErrorKind;
+
+    use crate::format::input::{Input, WithParseError};
+    use crate::format::text::lexer::Token;
+
+    use crate::format::text::parser::WithWrappedInput;
+
+    impl<'a> WithParseError for Input<'a, Token<&'a str>> {
+        type Error = (Input<'a, Token<&'a str>>, ErrorKind);
+    }
+
+    impl<'a> WithWrappedInput for Input<'a, Token<&str>> {
+        type Inner = &'a str;
+    }
+
+    macro_rules! lex {
+	    ($str: expr) => { 
+            nom::multi::many0($crate::format::text::lexer::token)($str).map(|(_, r)| r)
+	    };
+    }
+}
+
+mod instructions;
+mod lexical;
+mod types;
+mod values;

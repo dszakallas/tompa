@@ -1,5 +1,6 @@
+#![macro_use]
+
 use phf::phf_map;
-use crate::defs;
 
 /*
     Hack: opcode is used as the enum ordinal for the keywords, as this way the enum can serve as

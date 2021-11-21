@@ -549,7 +549,7 @@ fn module_rule(
         if !et_names.contains(&export.name) {
             et_names.insert(&export.name);
         } else {
-            None?
+            Err(TypeError)
         }
         ets.push(ExportRule {}.check(export, &ctx)?);
     }

@@ -2,45 +2,24 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::option::NoneError;
 
 use im_rc;
 
 use crate::ast::*;
 
 #[derive(Debug)]
-pub struct TypeError {
-    syntax: String
-}
+pub struct TypeError;
 
 impl<'a> Display for TypeError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_fmt(format_args!(
-            "unable to type {}",
-            self.syntax,
-        ))
+        f.write_fmt(format_args!("typing error"))
     }
 }
 
 impl Error for TypeError {}
 
-struct TypeErrorWrapper {
-    inner: Option<TypeError>,
-}
 
-impl From<NoneError> for TypeErrorWrapper {
-    fn from(_: NoneError) -> Self {
-        TypeErrorWrapper { inner: None }
-    }
-}
-
-impl From<TypeError> for TypeErrorWrapper {
-    fn from(err: TypeError) -> Self {
-        TypeErrorWrapper { inner: Some(err) }
-    }
-}
-
-type WrappedResult<A> = Result<A, TypeErrorWrapper>;
+type WrappedResult<A> = Result<A, TypeError>;
 
 #[derive(Clone, Debug, Default)]
 pub struct Context {
@@ -59,7 +38,6 @@ pub trait Type {
     type Parameters;
     type Context;
 
-    #[inline]
     fn check(&self, parameters: &Self::Parameters, context: &Self::Context) -> Result<Self::Value, TypeError>;
 }
 
@@ -84,21 +62,10 @@ macro_rules! def_rule {
 
             #[inline]
             fn check(&self, parameters: &Self::Parameters, context: &Self::Context) -> Result<Self::Value, TypeError> {
-
-                $check(self, parameters, context).map_err(|e: TypeErrorWrapper| {
-                    e.inner.unwrap_or_else(move || type_error!(self))
-                })
+                $check(self, parameters, context)
             }
         }
-    };
-}
-
-macro_rules! type_error {
-    ($syntax:expr) => {
-        TypeError {
-            syntax: format!("{:?}", $syntax),
-        }
-    };
+   };
 }
 
 macro_rules! some_if {

@@ -18,18 +18,20 @@ use crate::format::text::parser::values::{ixx, fxx};
 
 use crate::format::text::parser::lexical::parsed_uxx;
 use nom::sequence::{pair, preceded, tuple};
-use std::option::NoneError;
 
 use crate::format::text::lexer::AsStr;
 
+use crate::format::text::parser::ParserError;
+
 use phf::phf_map;
 
+
 use std::result::Result as StdResult;
-use crate::format::input::WithParseError;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
+use std::collections::HashMap;
 use nom::branch::alt;
 use crate::format::text::parser::values::uxx;
-use nom::lib::std::collections::VecDeque;
+
 
 #[derive(Clone, Debug)]
 pub enum InstrParseType {
@@ -121,11 +123,11 @@ macro_rules! def_idx_parsers {
             fn $name<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, u32, I::Error> + 'b
                 where I::Inner: LexerInput<'a>,
             {
-                move |i: I| { // FIXME: compiler emits error[E0495] if I eta reduce this
+                move |i: I| {
                     alt((
-                        map_res(id, move |lit: &'a I::Inner| -> StdResult<u32, NoneError> {
-                            let idx = ctx.$table_name.index_of(&Some(lit.as_str().to_owned()))?;
-                            Ok(idx as u32)
+                        map_res(id, move |lit| -> StdResult<u32, ParserError> {
+                            ctx.$table_name.index_of(&Some(lit.to_owned()))
+                                .map_or_else(|| Err(ParserError), |x: usize| Ok(x as u32))
                         }),
                         uxx::<u32, I>
                     ))(i)
@@ -218,29 +220,31 @@ pub fn plaininstr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl F
     }
 }
 
-// #[inline]
-// pub fn instr_seq<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Vec<Instruction>, I::Error> + 'b
-//     where I::Inner: LexerInput<'a>,
-// {
-//     move |i: I| {
-//         let mut acc = Vec::with_capacity(4);
-//         let mut i = i.clone();
-//         loop
-//             match f(i.clone()) {
-//                 Err(Err::Error(_)) => return Ok((i, acc)),
-//                 Err(e) => return Err(e),
-//                 Ok((i1, o)) => {
-//                     if i1 == i {
-//                         return Err(Err::Error(E::from_error_kind(i, ErrorKind::Many0)));
-//                     }
-//
-//                     i = i1;
-//                     acc.push(o);
-//                 }
-//             }
-//         }
-//     }
-// }
+/*
+#[inline]
+pub fn instr_seq<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Vec<Instruction>, I::Error> + 'b
+    where I::Inner: LexerInput<'a>,
+{
+    move |i: I| {
+        let mut acc = Vec::with_capacity(4);
+        let mut i = i.clone();
+        loop
+            match f(i.clone()) {
+                Err(Err::Error(_)) => return Ok((i, acc)),
+                Err(e) => return Err(e),
+                Ok((i1, o)) => {
+                    if i1 == i {
+                        return Err(Err::Error(E::from_error_kind(i, ErrorKind::Many0)));
+                    }
+
+                    i = i1;
+                    acc.push(o);
+                }
+            }
+        }
+    }
+}
+*/
 
 #[inline]
 fn label<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, IdCtx, I::Error> + 'b
@@ -248,10 +252,10 @@ fn label<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResu
 {
     move |input: I| {
         let _i = input.clone();
-        let (i, c) = map_res(opt(id), |id_opt: Option<&I::Inner>| {
+        let (i, c) = map_res(opt(id), |id_opt| {
             match id_opt {
                 Some(id) => {
-                    let item = Some(id.as_str().to_owned());
+                    let item = Some(id.to_owned());
                     if ctx.labels.index_of(&item) != None {
                         Err(())
                     } else {
@@ -274,12 +278,12 @@ fn id_checker<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> 
     move |i: I| {
         map_res(
             opt(id),
-            |id_ch_opt: Option<&'a I::Inner>| {
+            |id_ch_opt| {
                 if let Some(id_ch) = id_ch_opt {
                     let id_opt = &ctx.labels[ctx.labels.len() - 1];
                     match id_opt {
                         None => Err(()),
-                        Some(id) if id.as_str() != id_ch.as_str() => Err(()),
+                        Some(id) if id.as_str() != id_ch => Err(()),
                         _ => Ok(())
                     }
                 } else {
@@ -299,11 +303,11 @@ fn memarg<'a, I: ParserInput<'a> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, Memar
         let (i, (offset, align)) = pair(
             map_res(
                 opt(keyword::<I>(Keyword::OffsetEqU32)),
-                |opt_o: Option<&I::Inner>| -> StdResult<u32, NoneError> {
+                |opt_o: Option<&I::Inner>| -> StdResult<u32, ParserError> {
                     if let Some(kw) = opt_o {
                         let o_i = kw.slice(7..);
                         let (_, offset) = parsed_uxx::<u32, Inner<I>>(o_i)
-                            .map_err(|_| NoneError)?;
+                            .map_err(|_| ParserError)?;
                         Ok(offset)
                     } else {
                         Ok(0)
@@ -312,17 +316,17 @@ fn memarg<'a, I: ParserInput<'a> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, Memar
             ),
             map_res(
                 opt(keyword::<I>(Keyword::AlignEqU32)),
-                |opt_a: Option<&I::Inner>| -> StdResult<u32, NoneError> {
+                |opt_a: Option<&I::Inner>| -> StdResult<u32, ParserError> {
                     if let Some(kw) = opt_a {
                         let a_i = kw.slice(6..);
                         let (_, align) = map_res(
                             parsed_uxx::<u32, I::Inner>,
                             |n| if n.count_ones() != 1 {
-                                Err(NoneError)
+                                Err(ParserError)
                             } else {
                                 Ok(n.trailing_zeros())
                             },
-                        )(a_i).map_err(|_| NoneError)?;
+                        )(a_i).map_err(|_| ParserError)?;
                         Ok(align)
                     } else {
                         Ok(n)
@@ -375,7 +379,7 @@ fn typeuse<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) ->
             let mut dupes = HashSet::<&'a str>::new();
 
             for (j, (inner_i, vt)) in params.iter().enumerate() {
-                if let (Some(inner_i)) = inner_i {
+                if let Some(inner_i) = inner_i {
                     if dupes.insert(inner_i.as_str()) {
                         // duplicate name
                         return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)))
@@ -396,17 +400,17 @@ fn typeuse<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) ->
 }
 
 
-//
+
 // #[cfg(test)]
 // mod test {
-//
+
 //     use nom::error::{ErrorKind};
-//
-//
+
+
 //     use super::*;
-//
+
 //     type FastError<T> = (T, ErrorKind);
-//
+
 //     #[test]
 //     fn test_label() {
 //         {
@@ -415,7 +419,7 @@ fn typeuse<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) ->
 //             assert_eq!(inner_ctx.labels, im_rc::vector![Some("id".to_owned())])
 //         }
 //     }
-//
+
 //     #[test]
 //     fn test_block() {
 //         assert_eq!(
@@ -426,26 +430,26 @@ fn typeuse<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) ->
 //             block::<'static, &str, FastError<&str>>(Default::default())("block $my_block end"),
 //             Ok(("", Block { result: None, instrs: vec![] }))
 //         );
-//
+
 //         {
 //             let mut id_ctx: IdCtx = Default::default();
 //             id_ctx.labels.push_back(Some("my_block".to_owned()));
 //             block::<'static, &str, FastError<&str>>(id_ctx)("block $my_block end").unwrap_err();
 //         }
-//
+
 //         assert_eq!(
 //             block::<'static, &str, FastError<&str>>(Default::default())("block $my_block end $my_block"),
 //             Ok(("", Block { result: None, instrs: vec![] }))
 //         );
-//
+
 //         block::<'static, &str, FastError<&str>>(Default::default())("block $my_block end $wrong_block").unwrap_err();
-//
+
 //         assert_eq!(
 //             block::<'static, &str, FastError<&str>>(Default::default())("block (result f64) end"),
 //             Ok(("", Block { result: Some(ValType::F64), instrs: vec![] }))
 //         );
 //     }
-//
+
 //     #[test]
 //     fn test_loop() {
 //         assert_eq!(
@@ -456,80 +460,80 @@ fn typeuse<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) ->
 //             loop_::<'static, &str, FastError<&str>>(Default::default())("loop $my_loop_ end"),
 //             Ok(("", Loop { result: None, instrs: vec![] }))
 //         );
-//
+
 //         {
 //             let mut id_ctx: IdCtx = Default::default();
 //             id_ctx.labels.push_back(Some("my_loop".to_owned()));
 //             loop_::<'static, &str, FastError<&str>>(id_ctx)("loop $my_loop end").unwrap_err();
 //         }
-//
+
 //         assert_eq!(
 //             loop_::<'static, &str, FastError<&str>>(Default::default())("loop $my_loop end $my_loop"),
 //             Ok(("", Loop { result: None, instrs: vec![] }))
 //         );
-//
+
 //         loop_::<'static, &str, FastError<&str>>(Default::default())("loop $my_loop end $wrong_loop").unwrap_err();
-//
+
 //         assert_eq!(
 //             loop_::<'static, &str, FastError<&str>>(Default::default())("loop (result f64) end"),
 //             Ok(("", Loop { result: Some(ValType::F64), instrs: vec![] }))
 //         );
 //     }
-//
+
 //     #[test]
-//     fn test_if_else() {
+//     fn test_if() {
 //         assert_eq!(
-//             if_else::<'static, &str, FastError<&str>>(Default::default())("if end"),
-//             Ok(("", IfElse { result: None, if_instrs: vec![], else_instrs: vec![] }))
+//             if_::<'static, &str, FastError<&str>>(Default::default())("if end"),
+//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
 //         );
-//
+
 //         assert_eq!(
-//             if_else::<'static, &str, FastError<&str>>(Default::default())("if else end"),
-//             Ok(("", IfElse { result: None, if_instrs: vec![], else_instrs: vec![] }))
+//             if_::<'static, &str, FastError<&str>>(Default::default())("if else end"),
+//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
 //         );
-//
+
 //         assert_eq!(
-//             if_else::<'static, &str, FastError<&str>>(Default::default())("if $my_if else end"),
-//             Ok(("", IfElse { result: None, if_instrs: vec![], else_instrs: vec![] }))
+//             if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else end"),
+//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
 //         );
-//
+
 //         assert_eq!(
-//             if_else::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $my_if end"),
-//             Ok(("", IfElse { result: None, if_instrs: vec![], else_instrs: vec![] }))
+//             if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $my_if end"),
+//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
 //         );
-//
+
 //         assert_eq!(
-//             if_else::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $my_if end $my_if"),
-//             Ok(("", IfElse { result: None, if_instrs: vec![], else_instrs: vec![] }))
+//             if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $my_if end $my_if"),
+//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
 //         );
-//
-//         if_else::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $wrong_if end").unwrap_err();
-//
-//         if_else::<'static, &str, FastError<&str>>(Default::default())("if $my_if else end $wrong_if").unwrap_err();
+
+//         if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $wrong_if end").unwrap_err();
+
+//         if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else end $wrong_if").unwrap_err();
 //     }
-//
+
 //     #[test]
 //     fn test_mem_arg() {
 //         assert_eq!(
 //             memarg::<'static, &str, FastError<&str>>(1)(""),
-//             Ok(("", MemArg { offset: 0, align: 1 }))
+//             Ok(("", Memarg { offset: 0, align: 1 }))
 //         );
-//
+
 //         assert_eq!(
 //             memarg::<'static, &str, FastError<&str>>(2)("offset=4"),
-//             Ok(("", MemArg { offset: 4, align: 2 }))
+//             Ok(("", Memarg { offset: 4, align: 2 }))
 //         );
-//
+
 //         assert_eq!(
 //             memarg::<'static, &str, FastError<&str>>(2)("align=16"),
-//             Ok(("", MemArg { offset: 0, align: 4 }))
+//             Ok(("", Memarg { offset: 0, align: 4 }))
 //         );
-//
+
 //         assert_eq!(
 //             memarg::<'static, &str, FastError<&str>>(2)("offset=8 align=64"),
-//             Ok(("", MemArg { offset: 8, align: 6 }))
+//             Ok(("", Memarg { offset: 8, align: 6 }))
 //         );
-//
+
 //         memarg::<'static, &str, FastError<&str>>(2)("offset=-8").unwrap_err();
 //         memarg::<'static, &str, FastError<&str>>(2)("align=111115235").unwrap_err();
 //     }

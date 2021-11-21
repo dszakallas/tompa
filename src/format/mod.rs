@@ -1,2 +1,2 @@
 mod input;
-mod text;
+pub mod text;
