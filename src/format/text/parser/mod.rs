@@ -47,6 +47,7 @@ pub trait WithWrappedInput {
     type Inner;
 }
 
+
 /// The main abstraction for parsable inputs.
 pub trait ParserInput<'a>:
     Clone

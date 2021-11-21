@@ -154,4 +154,11 @@ mod test {
             Ok(FuncType { parameters: vec![(Some("$abcd"), ValType::I32)], results: vec![ValType::F64] })
         );
     }
+
+    #[test]
+    fn test_resulttype() {
+        let t = lex!("(result f32)").unwrap();
+
+        assert_eq!(consumed!(resulttype, Input::new(&t)), Ok(ValType::F32));
+    }
 }
