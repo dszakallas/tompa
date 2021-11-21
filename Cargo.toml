@@ -10,7 +10,7 @@ edition = "2018"
 #proc-macro = true
 
 [dependencies]
-im-rc = "13.0.0"
+im-rc = "15.0.0"
 nom = "5.0.1"
 nom_locate = "2.0.0"
 num = "0.2.0"

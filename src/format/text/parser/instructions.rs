@@ -1,13 +1,15 @@
-use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice};
+use nom::{AsChar as NomAsChar, IResult, Slice};
 
-use nom::combinator::{map, map_res, not, opt, peek, recognize, value};
+use nom::combinator::{map, map_res, not, opt, value};
 use nom::error::{ParseError, ErrorKind};
 
-use nom::multi::{fold_many0, many0, many1};
+use nom::multi::{many0, many1};
 
 use crate::ast::*;
 
-use crate::format::text::parser::{IdCtx, ParserInput, id, keyword, WithWrappedInput, anykeyword, par, parc};
+use crate::format::text::parser::{id, keyword, WithWrappedInput, anykeyword, par, parc};
+use crate::format::text::parser::ParserInput;
+use crate::format::text::parser::IdCtx;
 
 use crate::format::text::lexer::LexerInput;
 
@@ -25,10 +27,8 @@ use crate::format::text::parser::ParserError;
 
 use phf::phf_map;
 
-
 use std::result::Result as StdResult;
-use std::collections::{HashSet};
-use std::collections::HashMap;
+use std::collections::HashSet;
 use nom::branch::alt;
 use crate::format::text::parser::values::uxx;
 
@@ -401,140 +401,153 @@ fn typeuse<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) ->
 
 
 
-// #[cfg(test)]
-// mod test {
+#[cfg(test)]
+mod test {
 
-//     use nom::error::{ErrorKind};
+    use nom::error::{ErrorKind};
 
 
-//     use super::*;
+    use crate::format::input::Input;
 
-//     type FastError<T> = (T, ErrorKind);
+    use super::*;
 
-//     #[test]
-//     fn test_label() {
-//         {
-//             let (i, inner_ctx) = label::<&str, FastError<&str>>(Default::default())("$id").unwrap();
-//             assert_eq!(i, "");
-//             assert_eq!(inner_ctx.labels, im_rc::vector![Some("id".to_owned())])
-//         }
-//     }
+    type FastError<T> = (T, ErrorKind);
 
-//     #[test]
-//     fn test_block() {
-//         assert_eq!(
-//             block::<'static, &str, FastError<&str>>(Default::default())("block end"),
-//             Ok(("", Block { result: None, instrs: vec![] }))
-//         );
-//         assert_eq!(
-//             block::<'static, &str, FastError<&str>>(Default::default())("block $my_block end"),
-//             Ok(("", Block { result: None, instrs: vec![] }))
-//         );
+    // #[test]
+    // fn test_label() {
+    //     {
+    //         let (i, inner_ctx) = label::<&str, FastError<&str>>(Default::default())("$id").unwrap();
+    //         assert_eq!(i, "");
+    //         assert_eq!(inner_ctx.labels, im_rc::vector![Some("id".to_owned())])
+    //     }
+    // }
 
-//         {
-//             let mut id_ctx: IdCtx = Default::default();
-//             id_ctx.labels.push_back(Some("my_block".to_owned()));
-//             block::<'static, &str, FastError<&str>>(id_ctx)("block $my_block end").unwrap_err();
-//         }
+    #[test]
+    fn test_block() {
+        {
+            let res = Instruction::Block(Block{ result: Some(ValType::F32), instrs: vec![]});
+            {
+                let t = lex!("block (result f32) end").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+            {
+                let t = lex!("block $a (result f32) end $a").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+            {
+                let t = lex!("block $a (result f32) end $b").unwrap();
+                consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+            }
+            {
+                let t = lex!("block $a (result f32) end").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+        }
+        {
+            let res = Instruction::Block(Block{ result: None, instrs: vec![]});
+            {
+                let t = lex!("block $a end $a").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+        }
+    }
 
-//         assert_eq!(
-//             block::<'static, &str, FastError<&str>>(Default::default())("block $my_block end $my_block"),
-//             Ok(("", Block { result: None, instrs: vec![] }))
-//         );
+    #[test]
+    fn test_loop() {
+        {
+            let res = Instruction::Loop(Loop{ result: Some(ValType::F32), instrs: vec![]});
+            {
+                let t = lex!("loop (result f32) end").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+            {
+                let t = lex!("loop $a (result f32) end $a").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+            {
+                let t = lex!("loop $a (result f32) end $b").unwrap();
+                consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+            }
+            {
+                let t = lex!("loop $a (result f32) end").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+        }
+        {
+            let res = Instruction::Loop(Loop{ result: None, instrs: vec![]});
+            {
+                let t = lex!("loop $a end $a").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+        }
+    }
 
-//         block::<'static, &str, FastError<&str>>(Default::default())("block $my_block end $wrong_block").unwrap_err();
+    #[test]
+    fn test_if() {
+        {
+            let res = Instruction::If(If{ result: Some(ValType::F32), if_instrs: vec![], else_instrs: vec![] });
+            {
+                let t = lex!("if (result f32) end").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+            {
+                let t = lex!("if $a (result f32) end $a").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+            {
+                let t = lex!("if $a (result f32) end $b").unwrap();
+                consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+            }
+            {
+                let t = lex!("if $a (result f32) end").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+            {
+                let t = lex!("if $a (result f32) else $a end $a").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+            {
+                let t = lex!("if $a (result f32) else $b end $a").unwrap();
+                consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+            }
+            {
+                let t = lex!("if $a (result f32) else end $a").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+        }
+        {
+            let res = Instruction::If(If{ result: None, if_instrs: vec![], else_instrs: vec![]});
+            {
+                let t = lex!("if $a end $a").unwrap();
+                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            }
+        }
+    }
 
-//         assert_eq!(
-//             block::<'static, &str, FastError<&str>>(Default::default())("block (result f64) end"),
-//             Ok(("", Block { result: Some(ValType::F64), instrs: vec![] }))
-//         );
-//     }
 
-//     #[test]
-//     fn test_loop() {
-//         assert_eq!(
-//             loop_::<'static, &str, FastError<&str>>(Default::default())("loop end"),
-//             Ok(("", Loop { result: None, instrs: vec![] }))
-//         );
-//         assert_eq!(
-//             loop_::<'static, &str, FastError<&str>>(Default::default())("loop $my_loop_ end"),
-//             Ok(("", Loop { result: None, instrs: vec![] }))
-//         );
+    // #[test]
+    // fn test_mem_arg() {
+    //     assert_eq!(
+    //         memarg::<'static, &str, FastError<&str>>(1)(""),
+    //         Ok(("", Memarg { offset: 0, align: 1 }))
+    //     );
 
-//         {
-//             let mut id_ctx: IdCtx = Default::default();
-//             id_ctx.labels.push_back(Some("my_loop".to_owned()));
-//             loop_::<'static, &str, FastError<&str>>(id_ctx)("loop $my_loop end").unwrap_err();
-//         }
+    //     assert_eq!(
+    //         memarg::<'static, &str, FastError<&str>>(2)("offset=4"),
+    //         Ok(("", Memarg { offset: 4, align: 2 }))
+    //     );
 
-//         assert_eq!(
-//             loop_::<'static, &str, FastError<&str>>(Default::default())("loop $my_loop end $my_loop"),
-//             Ok(("", Loop { result: None, instrs: vec![] }))
-//         );
+    //     assert_eq!(
+    //         memarg::<'static, &str, FastError<&str>>(2)("align=16"),
+    //         Ok(("", Memarg { offset: 0, align: 4 }))
+    //     );
 
-//         loop_::<'static, &str, FastError<&str>>(Default::default())("loop $my_loop end $wrong_loop").unwrap_err();
+    //     assert_eq!(
+    //         memarg::<'static, &str, FastError<&str>>(2)("offset=8 align=64"),
+    //         Ok(("", Memarg { offset: 8, align: 6 }))
+    //     );
 
-//         assert_eq!(
-//             loop_::<'static, &str, FastError<&str>>(Default::default())("loop (result f64) end"),
-//             Ok(("", Loop { result: Some(ValType::F64), instrs: vec![] }))
-//         );
-//     }
-
-//     #[test]
-//     fn test_if() {
-//         assert_eq!(
-//             if_::<'static, &str, FastError<&str>>(Default::default())("if end"),
-//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
-//         );
-
-//         assert_eq!(
-//             if_::<'static, &str, FastError<&str>>(Default::default())("if else end"),
-//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
-//         );
-
-//         assert_eq!(
-//             if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else end"),
-//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
-//         );
-
-//         assert_eq!(
-//             if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $my_if end"),
-//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
-//         );
-
-//         assert_eq!(
-//             if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $my_if end $my_if"),
-//             Ok(("", If { result: None, if_instrs: vec![], else_instrs: vec![] }))
-//         );
-
-//         if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else $wrong_if end").unwrap_err();
-
-//         if_::<'static, &str, FastError<&str>>(Default::default())("if $my_if else end $wrong_if").unwrap_err();
-//     }
-
-//     #[test]
-//     fn test_mem_arg() {
-//         assert_eq!(
-//             memarg::<'static, &str, FastError<&str>>(1)(""),
-//             Ok(("", Memarg { offset: 0, align: 1 }))
-//         );
-
-//         assert_eq!(
-//             memarg::<'static, &str, FastError<&str>>(2)("offset=4"),
-//             Ok(("", Memarg { offset: 4, align: 2 }))
-//         );
-
-//         assert_eq!(
-//             memarg::<'static, &str, FastError<&str>>(2)("align=16"),
-//             Ok(("", Memarg { offset: 0, align: 4 }))
-//         );
-
-//         assert_eq!(
-//             memarg::<'static, &str, FastError<&str>>(2)("offset=8 align=64"),
-//             Ok(("", Memarg { offset: 8, align: 6 }))
-//         );
-
-//         memarg::<'static, &str, FastError<&str>>(2)("offset=-8").unwrap_err();
-//         memarg::<'static, &str, FastError<&str>>(2)("align=111115235").unwrap_err();
-//     }
-// }
+    //     memarg::<'static, &str, FastError<&str>>(2)("offset=-8").unwrap_err();
+    //     memarg::<'static, &str, FastError<&str>>(2)("align=111115235").unwrap_err();
+    // }
+}
