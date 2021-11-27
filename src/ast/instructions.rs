@@ -7,183 +7,185 @@ use super::types::*;
 macro_rules! instruction_defs_cps { ($cb:ident($($args:tt)*)) => { $cb!{
 $($args)*
 /*
-                    Parameters              Text                Opcode                   Parsing              Typing rule
+Keep tabulated with column -t -s ";" -o ";" table > table_organized
+
+Name             ; Parameters                                                                           ; Text                 ; Opcode ; Parse type ; Typecheck rule                                               ;
 */
-Unreachable			 { params: (), text: "unreachable",			 opcode: 0x00i32,			 parse: NoArg(),			 check: UnreachableType {} },
-Nop			 { params: (), text: "nop",			 opcode: 0x01i32,			 parse: NoArg(),			 check: NopType { } },
-Block			 { params: (result: Option<ValType>, instrs: Vec<Instruction>), text: "block",			 opcode: 0x02i32,			 parse: Block(),			 check: BlockType {} },
-Loop             { params: (result: Option<ValType>, instrs: Vec<Instruction>), text: "loop", opcode: 0x03i32,  parse: Loop(),			 check: LoopType {} },
-If			     { params: (result: Option<ValType>, if_instrs: Vec<Instruction>, else_instrs: Vec<Instruction>), text: "if",			 opcode: 0x04i32,			 parse: If(),			 check: IfType {} },
-Br			     { params: (), text: "br",			 opcode: 0x0ci32,			 parse: NoArg(),			 check: BrType {} },
-BrIf			 { params: (), text: "br_if",			 opcode: 0x0di32,			 parse: NoArg(),			 check: BrIfType {} },
-BrTable			 { params: (), text: "br_table",			 opcode: 0x0ei32,			 parse: NoArg(),			 check: BrTableType {} },
-Return			 { params: (), text: "return",			 opcode: 0x0fi32,			 parse: NoArg(),			 check: ReturnType{} },
-Call			 { params: (), text: "call",			 opcode: 0x10i32,			 parse: NoArg(),			 check: CallType{} },
-CallIndirect     { params: (), text: "call_indirect",			 opcode: 0x11i32,			 parse: NoArg(),			 check: CallIndirectType{} },
-Drop			 { params: (), text: "drop",			 opcode: 0x1ai32,			 parse: NoArg(),			 check: () },
-Select			 { params: (), text: "select",			 opcode: 0x1bi32,			 parse: NoArg(),			 check: () },
-LocalGet			 { params: (localidx: LocalIdx), text: "local.get",			 opcode: 0x20i32,			 parse: LocalIdx(),			 check: () },
-LocalSet			 { params: (localidx: LocalIdx), text: "local.set",			 opcode: 0x21i32,			 parse: LocalIdx(),			 check: () },
-LocalTee			 { params: (localidx: LocalIdx), text: "local.tee",			 opcode: 0x22i32,			 parse: LocalIdx(),			 check: () },
-GlobalGet			 { params: (globalidx: GlobalIdx), text: "global.get",			 opcode: 0x23i32,			 parse: GlobalIdx(),			 check: () },
-GlobalSet			 { params: (globalidx: GlobalIdx), text: "global.set",			 opcode: 0x24i32,			 parse: GlobalIdx(),			 check: () },
-I32Load             { params: (memarg: Memarg), text: "i32.load",			 opcode: 0x28i32,			 parse: MemLs(4),                     check: LoadType { valtype: ValType::I32, storage: None } },
-I64Load			    { params: (memarg: Memarg), text: "i64.load",			 opcode: 0x29i32,			 parse: MemLs(8),			            check: LoadType { valtype: ValType::I64, storage: None } },
-F32Load			    { params: (memarg: Memarg), text: "f32.load",			 opcode: 0x2ai32,			 parse: MemLs(4),			            check: LoadType { valtype: ValType::F32, storage: None } },
-F64Load			    { params: (memarg: Memarg), text: "f64.load",			 opcode: 0x2bi32,			 parse: MemLs(8),			            check: LoadType { valtype: ValType::F64, storage: None } },
-I32Load8S			{ params: (memarg: Memarg), text: "i32.load8_s",			 opcode: 0x2ci32,			 parse: MemLs(1),			        check: LoadType { valtype: ValType::I32, storage: Some((1, Sx::S)) } },
-I32Load8U			{ params: (memarg: Memarg), text: "i32.load8_u",			 opcode: 0x2di32,			 parse: MemLs(1),			        check: LoadType { valtype: ValType::I32, storage: Some((1, Sx::U)) } },
-I32Load16S			{ params: (memarg: Memarg), text: "i32.load16_s",			 opcode: 0x2ei32,			 parse: MemLs(2),			        check: LoadType { valtype: ValType::I32, storage: Some((2, Sx::S)) } },
-I32Load16U			{ params: (memarg: Memarg), text: "i32.load16_u",			 opcode: 0x2fi32,			 parse: MemLs(2),			        check: LoadType { valtype: ValType::I32, storage: Some((2, Sx::U)) } },
-I64Load8S			{ params: (memarg: Memarg), text: "i64.load8_s",			 opcode: 0x30i32,			 parse: MemLs(1),			        check: LoadType { valtype: ValType::I64, storage: Some((1, Sx::S)) } },
-I64Load8U			{ params: (memarg: Memarg), text: "i64.load8_u",			 opcode: 0x31i32,			 parse: MemLs(1),			        check: LoadType { valtype: ValType::I64, storage: Some((1, Sx::U)) } },
-I64Load16S			{ params: (memarg: Memarg), text: "i64.load16_s",			 opcode: 0x32i32,			 parse: MemLs(2),			        check: LoadType { valtype: ValType::I64, storage: Some((2, Sx::S)) } },
-I64Load16U			{ params: (memarg: Memarg), text: "i64.load16_u",			 opcode: 0x33i32,			 parse: MemLs(2),			        check: LoadType { valtype: ValType::I64, storage: Some((3, Sx::U)) } },
-I64Load32S			{ params: (memarg: Memarg), text: "i64.load32_s",			 opcode: 0x34i32,			 parse: MemLs(4),			        check: LoadType { valtype: ValType::I64, storage: Some((4, Sx::S)) } },
-I64Load32U			{ params: (memarg: Memarg), text: "i64.load32_u",			 opcode: 0x35i32,			 parse: MemLs(4),			        check: LoadType { valtype: ValType::I64, storage: Some((4, Sx::U)) } },
-I32Store			{ params: (memarg: Memarg), text: "i32.store",			 opcode: 0x36i32,			 parse: MemLs(4),			        check: StoreType { valtype: ValType::I32, storage: None } },
-I64Store			{ params: (memarg: Memarg), text: "i64.store",			 opcode: 0x37i32,			 parse: MemLs(8),			        check: StoreType { valtype: ValType::I64, storage: None } },
-F32Store			{ params: (memarg: Memarg), text: "f32.store",			 opcode: 0x38i32,			 parse: MemLs(4),			        check: StoreType { valtype: ValType::F32, storage: None } },
-F64Store			{ params: (memarg: Memarg), text: "f64.store",			 opcode: 0x39i32,			 parse: MemLs(8),			        check: StoreType { valtype: ValType::F64, storage: None } },
-I32Store8			{ params: (memarg: Memarg), text: "i32.store8",			 opcode: 0x3ai32,			 parse: MemLs(1),			        check: StoreType { valtype: ValType::I32, storage: Some(1) } },
-I32Store16			{ params: (memarg: Memarg), text: "i32.store16",			 opcode: 0x3bi32,			 parse: MemLs(2),			        check: StoreType { valtype: ValType::I32, storage: Some(2) } },
-I64Store8			{ params: (memarg: Memarg), text: "i64.store8",			 opcode: 0x3ci32,			 parse: MemLs(1),			        check: StoreType { valtype: ValType::I64, storage: Some(1) } },
-I64Store16			{ params: (memarg: Memarg), text: "i64.store16",			 opcode: 0x3di32,			 parse: MemLs(2),			        check: StoreType { valtype: ValType::I64, storage: Some(2) } },
-I64Store32			{ params: (memarg: Memarg), text: "i64.store32",			 opcode: 0x3ei32,			 parse: MemLs(4),			        check: StoreType { valtype: ValType::I64, storage: Some(4) } },
-MemorySize			 { params: (), text: "memory.size",			 opcode: 0x3fi32,			 parse: NoArg(),			 check: () },
-MemoryGrow			 { params: (), text: "memory.grow",			 opcode: 0x40i32,			 parse: NoArg(),			 check: () },
-I32Const			 { params: (param: u32), text: "i32.const",			 opcode: 0x41i32,			 parse: ConstI32(),			 check: () },
-I64Const			 { params: (param: u64), text: "i64.const",			 opcode: 0x42i32,			 parse: ConstI64(),			 check: () },
-F32Const			 { params: (param: f32), text: "f32.const",			 opcode: 0x43i32,			 parse: ConstF32(),			 check: () },
-F64Const			 { params: (param: f64), text: "f64.const",			 opcode: 0x44i32,			 parse: ConstF64(),			 check: () },
-I32Eqz			 { params: (), text: "i32.eqz",			 opcode: 0x45i32,			 parse: NoArg(),			 check: () },
-I32Eq			 { params: (), text: "i32.eq",			 opcode: 0x46i32,			 parse: NoArg(),			 check: () },
-I32Ne			 { params: (), text: "i32.ne",			 opcode: 0x47i32,			 parse: NoArg(),			 check: () },
-I32LtS			 { params: (), text: "i32.lt_s",			 opcode: 0x48i32,			 parse: NoArg(),			 check: () },
-I32LtU			 { params: (), text: "i32.lt_u",			 opcode: 0x49i32,			 parse: NoArg(),			 check: () },
-I32GtS			 { params: (), text: "i32.gt_s",			 opcode: 0x4ai32,			 parse: NoArg(),			 check: () },
-I32GtU			 { params: (), text: "i32.gt_u",			 opcode: 0x4bi32,			 parse: NoArg(),			 check: () },
-I32LeS			 { params: (), text: "i32.le_s",			 opcode: 0x4ci32,			 parse: NoArg(),			 check: () },
-I32LeU			 { params: (), text: "i32.le_u",			 opcode: 0x4di32,			 parse: NoArg(),			 check: () },
-I32GeS			 { params: (), text: "i32.ge_s",			 opcode: 0x4ei32,			 parse: NoArg(),			 check: () },
-I32GeU			 { params: (), text: "i32.ge_u",			 opcode: 0x4fi32,			 parse: NoArg(),			 check: () },
-I64Eqz			 { params: (), text: "i64.eqz",			 opcode: 0x50i32,			 parse: NoArg(),			 check: () },
-I64Eq			 { params: (), text: "i64.eq",			 opcode: 0x51i32,			 parse: NoArg(),			 check: () },
-I64Ne			 { params: (), text: "i64.ne",			 opcode: 0x52i32,			 parse: NoArg(),			 check: () },
-I64LtS			 { params: (), text: "i64.lt_s",			 opcode: 0x53i32,			 parse: NoArg(),			 check: () },
-I64LtU			 { params: (), text: "i64.lt_u",			 opcode: 0x54i32,			 parse: NoArg(),			 check: () },
-I64GtS			 { params: (), text: "i64.gt_s",			 opcode: 0x55i32,			 parse: NoArg(),			 check: () },
-I64GtU			 { params: (), text: "i64.gt_u",			 opcode: 0x56i32,			 parse: NoArg(),			 check: () },
-I64LeS			 { params: (), text: "i64.le_s",			 opcode: 0x57i32,			 parse: NoArg(),			 check: () },
-I64LeU			 { params: (), text: "i64.le_u",			 opcode: 0x58i32,			 parse: NoArg(),			 check: () },
-I64GeS			 { params: (), text: "i64.ge_s",			 opcode: 0x59i32,			 parse: NoArg(),			 check: () },
-I64GeU			 { params: (), text: "i64.ge_u",			 opcode: 0x5ai32,			 parse: NoArg(),			 check: () },
-F32Eq			 { params: (), text: "f32.eq",			 opcode: 0x5bi32,			 parse: NoArg(),			 check: () },
-F32Ne			 { params: (), text: "f32.ne",			 opcode: 0x5ci32,			 parse: NoArg(),			 check: () },
-F32Lt			 { params: (), text: "f32.lt",			 opcode: 0x5di32,			 parse: NoArg(),			 check: () },
-F32Gt			 { params: (), text: "f32.gt",			 opcode: 0x5ei32,			 parse: NoArg(),			 check: () },
-F32Le			 { params: (), text: "f32.le",			 opcode: 0x5fi32,			 parse: NoArg(),			 check: () },
-F32Ge			 { params: (), text: "f32.ge",			 opcode: 0x60i32,			 parse: NoArg(),			 check: () },
-F64Eq			 { params: (), text: "f64.eq",			 opcode: 0x61i32,			 parse: NoArg(),			 check: () },
-F64Ne			 { params: (), text: "f64.ne",			 opcode: 0x62i32,			 parse: NoArg(),			 check: () },
-F64Lt			 { params: (), text: "f64.lt",			 opcode: 0x63i32,			 parse: NoArg(),			 check: () },
-F64Gt			 { params: (), text: "f64.gt",			 opcode: 0x64i32,			 parse: NoArg(),			 check: () },
-F64Le			 { params: (), text: "f64.le",			 opcode: 0x65i32,			 parse: NoArg(),			 check: () },
-F64Ge			 { params: (), text: "f64.ge",			 opcode: 0x66i32,			 parse: NoArg(),			 check: () },
-I32Clz			 { params: (), text: "i32.clz",			 opcode: 0x67i32,			 parse: NoArg(),			 check: () },
-I32Ctz			 { params: (), text: "i32.ctz",			 opcode: 0x68i32,			 parse: NoArg(),			 check: () },
-I32Popcnt			 { params: (), text: "i32.popcnt",			 opcode: 0x69i32,			 parse: NoArg(),			 check: () },
-I32Add			 { params: (), text: "i32.add",			 opcode: 0x6ai32,			 parse: NoArg(),			 check: () },
-I32Sub			 { params: (), text: "i32.sub",			 opcode: 0x6bi32,			 parse: NoArg(),			 check: () },
-I32Mul			 { params: (), text: "i32.mul",			 opcode: 0x6ci32,			 parse: NoArg(),			 check: () },
-I32DivS			 { params: (), text: "i32.div_s",			 opcode: 0x6di32,			 parse: NoArg(),			 check: () },
-I32DivU			 { params: (), text: "i32.div_u",			 opcode: 0x6ei32,			 parse: NoArg(),			 check: () },
-I32RemS			 { params: (), text: "i32.rem_s",			 opcode: 0x6fi32,			 parse: NoArg(),			 check: () },
-I32RemU			 { params: (), text: "i32.rem_u",			 opcode: 0x70i32,			 parse: NoArg(),			 check: () },
-I32And			 { params: (), text: "i32.and",			 opcode: 0x71i32,			 parse: NoArg(),			 check: () },
-I32Or			 { params: (), text: "i32.or",			 opcode: 0x72i32,			 parse: NoArg(),			 check: () },
-I32Xor			 { params: (), text: "i32.xor",			 opcode: 0x73i32,			 parse: NoArg(),			 check: () },
-I32Shl			 { params: (), text: "i32.shl",			 opcode: 0x74i32,			 parse: NoArg(),			 check: () },
-I32ShrS			 { params: (), text: "i32.shr_s",			 opcode: 0x75i32,			 parse: NoArg(),			 check: () },
-I32ShrU			 { params: (), text: "i32.shr_u",			 opcode: 0x76i32,			 parse: NoArg(),			 check: () },
-I32Rotl			 { params: (), text: "i32.rotl",			 opcode: 0x77i32,			 parse: NoArg(),			 check: () },
-I32Rotr			 { params: (), text: "i32.rotr",			 opcode: 0x78i32,			 parse: NoArg(),			 check: () },
-I64Clz			 { params: (), text: "i64.clz",			 opcode: 0x79i32,			 parse: NoArg(),			 check: () },
-I64Ctz			 { params: (), text: "i64.ctz",			 opcode: 0x7ai32,			 parse: NoArg(),			 check: () },
-I64Popcnt			 { params: (), text: "i64.popcnt",			 opcode: 0x7bi32,			 parse: NoArg(),			 check: () },
-I64Add			 { params: (), text: "i64.add",			 opcode: 0x7ci32,			 parse: NoArg(),			 check: () },
-I64Sub			 { params: (), text: "i64.sub",			 opcode: 0x7di32,			 parse: NoArg(),			 check: () },
-I64Mul			 { params: (), text: "i64.mul",			 opcode: 0x7ei32,			 parse: NoArg(),			 check: () },
-I64DivS			 { params: (), text: "i64.div_s",			 opcode: 0x7fi32,			 parse: NoArg(),			 check: () },
-I64DivU			 { params: (), text: "i64.div_u",			 opcode: 0x80i32,			 parse: NoArg(),			 check: () },
-I64RemS			 { params: (), text: "i64.rem_s",			 opcode: 0x81i32,			 parse: NoArg(),			 check: () },
-I64RemU			 { params: (), text: "i64.rem_u",			 opcode: 0x82i32,			 parse: NoArg(),			 check: () },
-I64And			 { params: (), text: "i64.and",			 opcode: 0x83i32,			 parse: NoArg(),			 check: () },
-I64Or			 { params: (), text: "i64.or",			 opcode: 0x84i32,			 parse: NoArg(),			 check: () },
-I64Xor			 { params: (), text: "i64.xor",			 opcode: 0x85i32,			 parse: NoArg(),			 check: () },
-I64Shl			 { params: (), text: "i64.shl",			 opcode: 0x86i32,			 parse: NoArg(),			 check: () },
-I64ShrS			 { params: (), text: "i64.shr_s",			 opcode: 0x87i32,			 parse: NoArg(),			 check: () },
-I64ShrU			 { params: (), text: "i64.shr_u",			 opcode: 0x88i32,			 parse: NoArg(),			 check: () },
-I64Rotl			 { params: (), text: "i64.rotl",			 opcode: 0x89i32,			 parse: NoArg(),			 check: () },
-I64Rotr			 { params: (), text: "i64.rotr",			 opcode: 0x8ai32,			 parse: NoArg(),			 check: () },
-F32Abs			 { params: (), text: "f32.abs",			 opcode: 0x8bi32,			 parse: NoArg(),			 check: () },
-F32Neg			 { params: (), text: "f32.neg",			 opcode: 0x8ci32,			 parse: NoArg(),			 check: () },
-F32Ceil			 { params: (), text: "f32.ceil",			 opcode: 0x8di32,			 parse: NoArg(),			 check: () },
-F32Floor			 { params: (), text: "f32.floor",			 opcode: 0x8ei32,			 parse: NoArg(),			 check: () },
-F32Trunc			 { params: (), text: "f32.trunc",			 opcode: 0x8fi32,			 parse: NoArg(),			 check: () },
-F32Nearest			 { params: (), text: "f32.nearest",			 opcode: 0x90i32,			 parse: NoArg(),			 check: () },
-F32Sqrt			 { params: (), text: "f32.sqrt",			 opcode: 0x91i32,			 parse: NoArg(),			 check: () },
-F32Add			 { params: (), text: "f32.add",			 opcode: 0x92i32,			 parse: NoArg(),			 check: () },
-F32Sub			 { params: (), text: "f32.sub",			 opcode: 0x93i32,			 parse: NoArg(),			 check: () },
-F32Mul			 { params: (), text: "f32.mul",			 opcode: 0x94i32,			 parse: NoArg(),			 check: () },
-F32Div			 { params: (), text: "f32.div",			 opcode: 0x95i32,			 parse: NoArg(),			 check: () },
-F32Min			 { params: (), text: "f32.min",			 opcode: 0x96i32,			 parse: NoArg(),			 check: () },
-F32Max			 { params: (), text: "f32.max",			 opcode: 0x97i32,			 parse: NoArg(),			 check: () },
-F32Copysign			 { params: (), text: "f32.copysign",			 opcode: 0x98i32,			 parse: NoArg(),			 check: () },
-F64Abs			 { params: (), text: "f64.abs",			 opcode: 0x99i32,			 parse: NoArg(),			 check: () },
-F64Neg			 { params: (), text: "f64.neg",			 opcode: 0x9ai32,			 parse: NoArg(),			 check: () },
-F64Ceil			 { params: (), text: "f64.ceil",			 opcode: 0x9bi32,			 parse: NoArg(),			 check: () },
-F64Floor			 { params: (), text: "f64.floor",			 opcode: 0x9ci32,			 parse: NoArg(),			 check: () },
-F64Trunc			 { params: (), text: "f64.trunc",			 opcode: 0x9di32,			 parse: NoArg(),			 check: () },
-F64Nearest			 { params: (), text: "f64.nearest",			 opcode: 0x9ei32,			 parse: NoArg(),			 check: () },
-F64Sqrt			 { params: (), text: "f64.sqrt",			 opcode: 0x9fi32,			 parse: NoArg(),			 check: () },
-F64Add			 { params: (), text: "f64.add",			 opcode: 0xa0i32,			 parse: NoArg(),			 check: () },
-F64Sub			 { params: (), text: "f64.sub",			 opcode: 0xa1i32,			 parse: NoArg(),			 check: () },
-F64Mul			 { params: (), text: "f64.mul",			 opcode: 0xa2i32,			 parse: NoArg(),			 check: () },
-F64Div			 { params: (), text: "f64.div",			 opcode: 0xa3i32,			 parse: NoArg(),			 check: () },
-F64Min			 { params: (), text: "f64.min",			 opcode: 0xa4i32,			 parse: NoArg(),			 check: () },
-F64Max			 { params: (), text: "f64.max",			 opcode: 0xa5i32,			 parse: NoArg(),			 check: () },
-F64Copysign			 { params: (), text: "f64.copysign",			 opcode: 0xa6i32,			 parse: NoArg(),			 check: () },
-I32WrapI64			 { params: (), text: "i32.wrap_i64",			 opcode: 0xa7i32,			 parse: NoArg(),			 check: () },
-I32TruncF32S			 { params: (), text: "i32.trunc_f32_s",			 opcode: 0xa8i32,			 parse: NoArg(),			 check: () },
-I32TruncF32U			 { params: (), text: "i32.trunc_f32_u",			 opcode: 0xa9i32,			 parse: NoArg(),			 check: () },
-I32TruncF64S			 { params: (), text: "i32.trunc_f64_s",			 opcode: 0xaai32,			 parse: NoArg(),			 check: () },
-I32TruncF64U			 { params: (), text: "i32.trunc_f64_u",			 opcode: 0xabi32,			 parse: NoArg(),			 check: () },
-I64ExtendI32S			 { params: (), text: "i64.extend_i32_s",			 opcode: 0xaci32,			 parse: NoArg(),			 check: () },
-I64ExtendI32U			 { params: (), text: "i64.extend_i32_u",			 opcode: 0xadi32,			 parse: NoArg(),			 check: () },
-I64TruncF32S			 { params: (), text: "i64.trunc_f32_s",			 opcode: 0xaei32,			 parse: NoArg(),			 check: () },
-I64TruncF32U			 { params: (), text: "i64.trunc_f32_u",			 opcode: 0xafi32,			 parse: NoArg(),			 check: () },
-I64TruncF64S			 { params: (), text: "i64.trunc_f64_s",			 opcode: 0xb0i32,			 parse: NoArg(),			 check: () },
-I64TruncF64U			 { params: (), text: "i64.trunc_f64_u",			 opcode: 0xb1i32,			 parse: NoArg(),			 check: () },
-F32ConvertI32S			 { params: (), text: "f32.convert_i32_s",			 opcode: 0xb2i32,			 parse: NoArg(),			 check: () },
-F32ConvertI32U			 { params: (), text: "f32.convert_i32_u",			 opcode: 0xb3i32,			 parse: NoArg(),			 check: () },
-F32ConvertI64S			 { params: (), text: "f32.convert_i64_s",			 opcode: 0xb4i32,			 parse: NoArg(),			 check: () },
-F32ConvertI64U			 { params: (), text: "f32.convert_i64_u",			 opcode: 0xb5i32,			 parse: NoArg(),			 check: () },
-F32DemoteF64			 { params: (), text: "f32.demote_f64",			 opcode: 0xb6i32,			 parse: NoArg(),			 check: () },
-F64ConvertI32S			 { params: (), text: "f64.convert_i32_s",			 opcode: 0xb7i32,			 parse: NoArg(),			 check: () },
-F64ConvertI32U			 { params: (), text: "f64.convert_i32_u",			 opcode: 0xb8i32,			 parse: NoArg(),			 check: () },
-F64ConvertI64S			 { params: (), text: "f64.convert_i64_s",			 opcode: 0xb9i32,			 parse: NoArg(),			 check: () },
-F64ConvertI64U			 { params: (), text: "f64.convert_i64_u",			 opcode: 0xbai32,			 parse: NoArg(),			 check: () },
-F64PromoteF32			 { params: (), text: "f64.promote_f32",			 opcode: 0xbbi32,			 parse: NoArg(),			 check: () },
-I32ReinterpretF32			 { params: (), text: "i32.reinterpret_f32",			 opcode: 0xbci32,			 parse: NoArg(),			 check: () },
-I64ReinterpretF64			 { params: (), text: "i64.reinterpret_f64",			 opcode: 0xbdi32,			 parse: NoArg(),			 check: () },
-F32ReinterpretI32			 { params: (), text: "f32.reinterpret_i32",			 opcode: 0xbei32,			 parse: NoArg(),			 check: () },
-F64ReinterpretI64			 { params: (), text: "f64.reinterpret_i64",			 opcode: 0xbfi32,			 parse: NoArg(),			 check: () }
+Unreachable      ; ()                                                                                   ; "unreachable"        ; 0x00i32; NoArg()    ; UnreachableType { }                                          ;
+Nop              ; ()                                                                                   ; "nop"                ; 0x01i32; NoArg()    ; NopType { }                                                  ;
+Block            ; (result: Option<ValType>, instrs: Vec<Instruction>)                                  ; "block"              ; 0x02i32; Block()    ; BlockType {}                                                 ;
+Loop             ; (result: Option<ValType>, instrs: Vec<Instruction>)                                  ; "loop"               ; 0x03i32; Loop()     ; LoopType {}                                                  ;
+If               ; (result: Option<ValType>, if_instrs: Vec<Instruction>, else_instrs: Vec<Instruction>); "if"                 ; 0x04i32; If()       ; IfType {}                                                    ;
+Br               ; ()                                                                                   ; "br"                 ; 0x0ci32; NoArg()    ; BrType {}                                                    ;
+BrIf             ; ()                                                                                   ; "br_if"              ; 0x0di32; NoArg()    ; BrIfType {}                                                  ;
+BrTable          ; ()                                                                                   ; "br_table"           ; 0x0ei32; NoArg()    ; BrTableType {}                                               ;
+Return           ; ()                                                                                   ; "return"             ; 0x0fi32; NoArg()    ; ReturnType{}                                                 ;
+Call             ; ()                                                                                   ; "call"               ; 0x10i32; NoArg()    ; CallType{}                                                   ;
+CallIndirect     ; ()                                                                                   ; "call_indirect"      ; 0x11i32; NoArg()    ; CallIndirectType{}                                           ;
+Drop             ; ()                                                                                   ; "drop"               ; 0x1ai32; NoArg()    ; ()                                                           ;
+Select           ; ()                                                                                   ; "select"             ; 0x1bi32; NoArg()    ; ()                                                           ;
+LocalGet         ; (localidx: LocalIdx)                                                                 ; "local.get"          ; 0x20i32; LocalIdx() ; ()                                                           ;
+LocalSet         ; (localidx: LocalIdx)                                                                 ; "local.set"          ; 0x21i32; LocalIdx() ; ()                                                           ;
+LocalTee         ; (localidx: LocalIdx)                                                                 ; "local.tee"          ; 0x22i32; LocalIdx() ; ()                                                           ;
+GlobalGet        ; (globalidx: GlobalIdx)                                                               ; "global.get"         ; 0x23i32; GlobalIdx(); ()                                                           ;
+GlobalSet        ; (globalidx: GlobalIdx)                                                               ; "global.set"         ; 0x24i32; GlobalIdx(); ()                                                           ;
+I32Load          ; (memarg: Memarg)                                                                     ; "i32.load"           ; 0x28i32; MemLs(4)   ; LoadType { valtype: ValType::I32, storage: None }            ;
+I64Load          ; (memarg: Memarg)                                                                     ; "i64.load"           ; 0x29i32; MemLs(8)   ; LoadType { valtype: ValType::I64, storage: None }            ;
+F32Load          ; (memarg: Memarg)                                                                     ; "f32.load"           ; 0x2ai32; MemLs(4)   ; LoadType { valtype: ValType::F32, storage: None }            ;
+F64Load          ; (memarg: Memarg)                                                                     ; "f64.load"           ; 0x2bi32; MemLs(8)   ; LoadType { valtype: ValType::F64, storage: None }            ;
+I32Load8S        ; (memarg: Memarg)                                                                     ; "i32.load8_s"        ; 0x2ci32; MemLs(1)   ; LoadType { valtype: ValType::I32, storage: Some((1, Sx::S)) };
+I32Load8U        ; (memarg: Memarg)                                                                     ; "i32.load8_u"        ; 0x2di32; MemLs(1)   ; LoadType { valtype: ValType::I32, storage: Some((1, Sx::U)) };
+I32Load16S       ; (memarg: Memarg)                                                                     ; "i32.load16_s"       ; 0x2ei32; MemLs(2)   ; LoadType { valtype: ValType::I32, storage: Some((2, Sx::S)) };
+I32Load16U       ; (memarg: Memarg)                                                                     ; "i32.load16_u"       ; 0x2fi32; MemLs(2)   ; LoadType { valtype: ValType::I32, storage: Some((2, Sx::U)) };
+I64Load8S        ; (memarg: Memarg)                                                                     ; "i64.load8_s"        ; 0x30i32; MemLs(1)   ; LoadType { valtype: ValType::I64, storage: Some((1, Sx::S)) };
+I64Load8U        ; (memarg: Memarg)                                                                     ; "i64.load8_u"        ; 0x31i32; MemLs(1)   ; LoadType { valtype: ValType::I64, storage: Some((1, Sx::U)) };
+I64Load16S       ; (memarg: Memarg)                                                                     ; "i64.load16_s"       ; 0x32i32; MemLs(2)   ; LoadType { valtype: ValType::I64, storage: Some((2, Sx::S)) };
+I64Load16U       ; (memarg: Memarg)                                                                     ; "i64.load16_u"       ; 0x33i32; MemLs(2)   ; LoadType { valtype: ValType::I64, storage: Some((3, Sx::U)) };
+I64Load32S       ; (memarg: Memarg)                                                                     ; "i64.load32_s"       ; 0x34i32; MemLs(4)   ; LoadType { valtype: ValType::I64, storage: Some((4, Sx::S)) };
+I64Load32U       ; (memarg: Memarg)                                                                     ; "i64.load32_u"       ; 0x35i32; MemLs(4)   ; LoadType { valtype: ValType::I64, storage: Some((4, Sx::U)) };
+I32Store         ; (memarg: Memarg)                                                                     ; "i32.store"          ; 0x36i32; MemLs(4)   ; StoreType { valtype: ValType::I32, storage: None }           ;
+I64Store         ; (memarg: Memarg)                                                                     ; "i64.store"          ; 0x37i32; MemLs(8)   ; StoreType { valtype: ValType::I64, storage: None }           ;
+F32Store         ; (memarg: Memarg)                                                                     ; "f32.store"          ; 0x38i32; MemLs(4)   ; StoreType { valtype: ValType::F32, storage: None }           ;
+F64Store         ; (memarg: Memarg)                                                                     ; "f64.store"          ; 0x39i32; MemLs(8)   ; StoreType { valtype: ValType::F64, storage: None }           ;
+I32Store8        ; (memarg: Memarg)                                                                     ; "i32.store8"         ; 0x3ai32; MemLs(1)   ; StoreType { valtype: ValType::I32, storage: Some(1) }        ;
+I32Store16       ; (memarg: Memarg)                                                                     ; "i32.store16"        ; 0x3bi32; MemLs(2)   ; StoreType { valtype: ValType::I32, storage: Some(2) }        ;
+I64Store8        ; (memarg: Memarg)                                                                     ; "i64.store8"         ; 0x3ci32; MemLs(1)   ; StoreType { valtype: ValType::I64, storage: Some(1) }        ;
+I64Store16       ; (memarg: Memarg)                                                                     ; "i64.store16"        ; 0x3di32; MemLs(2)   ; StoreType { valtype: ValType::I64, storage: Some(2) }        ;
+I64Store32       ; (memarg: Memarg)                                                                     ; "i64.store32"        ; 0x3ei32; MemLs(4)   ; StoreType { valtype: ValType::I64, storage: Some(4) }        ;
+MemorySize       ; ()                                                                                   ; "memory.size"        ; 0x3fi32; NoArg()    ; ()                                                           ;
+MemoryGrow       ; ()                                                                                   ; "memory.grow"        ; 0x40i32; NoArg()    ; ()                                                           ;
+I32Const         ; (param: u32)                                                                         ; "i32.const"          ; 0x41i32; ConstI32() ; ()                                                           ;
+I64Const         ; (param: u64)                                                                         ; "i64.const"          ; 0x42i32; ConstI64() ; ()                                                           ;
+F32Const         ; (param: f32)                                                                         ; "f32.const"          ; 0x43i32; ConstF32() ; ()                                                           ;
+F64Const         ; (param: f64)                                                                         ; "f64.const"          ; 0x44i32; ConstF64() ; ()                                                           ;
+I32Eqz           ; ()                                                                                   ; "i32.eqz"            ; 0x45i32; NoArg()    ; ()                                                           ;
+I32Eq            ; ()                                                                                   ; "i32.eq"             ; 0x46i32; NoArg()    ; ()                                                           ;
+I32Ne            ; ()                                                                                   ; "i32.ne"             ; 0x47i32; NoArg()    ; ()                                                           ;
+I32LtS           ; ()                                                                                   ; "i32.lt_s"           ; 0x48i32; NoArg()    ; ()                                                           ;
+I32LtU           ; ()                                                                                   ; "i32.lt_u"           ; 0x49i32; NoArg()    ; ()                                                           ;
+I32GtS           ; ()                                                                                   ; "i32.gt_s"           ; 0x4ai32; NoArg()    ; ()                                                           ;
+I32GtU           ; ()                                                                                   ; "i32.gt_u"           ; 0x4bi32; NoArg()    ; ()                                                           ;
+I32LeS           ; ()                                                                                   ; "i32.le_s"           ; 0x4ci32; NoArg()    ; ()                                                           ;
+I32LeU           ; ()                                                                                   ; "i32.le_u"           ; 0x4di32; NoArg()    ; ()                                                           ;
+I32GeS           ; ()                                                                                   ; "i32.ge_s"           ; 0x4ei32; NoArg()    ; ()                                                           ;
+I32GeU           ; ()                                                                                   ; "i32.ge_u"           ; 0x4fi32; NoArg()    ; ()                                                           ;
+I64Eqz           ; ()                                                                                   ; "i64.eqz"            ; 0x50i32; NoArg()    ; ()                                                           ;
+I64Eq            ; ()                                                                                   ; "i64.eq"             ; 0x51i32; NoArg()    ; ()                                                           ;
+I64Ne            ; ()                                                                                   ; "i64.ne"             ; 0x52i32; NoArg()    ; ()                                                           ;
+I64LtS           ; ()                                                                                   ; "i64.lt_s"           ; 0x53i32; NoArg()    ; ()                                                           ;
+I64LtU           ; ()                                                                                   ; "i64.lt_u"           ; 0x54i32; NoArg()    ; ()                                                           ;
+I64GtS           ; ()                                                                                   ; "i64.gt_s"           ; 0x55i32; NoArg()    ; ()                                                           ;
+I64GtU           ; ()                                                                                   ; "i64.gt_u"           ; 0x56i32; NoArg()    ; ()                                                           ;
+I64LeS           ; ()                                                                                   ; "i64.le_s"           ; 0x57i32; NoArg()    ; ()                                                           ;
+I64LeU           ; ()                                                                                   ; "i64.le_u"           ; 0x58i32; NoArg()    ; ()                                                           ;
+I64GeS           ; ()                                                                                   ; "i64.ge_s"           ; 0x59i32; NoArg()    ; ()                                                           ;
+I64GeU           ; ()                                                                                   ; "i64.ge_u"           ; 0x5ai32; NoArg()    ; ()                                                           ;
+F32Eq            ; ()                                                                                   ; "f32.eq"             ; 0x5bi32; NoArg()    ; ()                                                           ;
+F32Ne            ; ()                                                                                   ; "f32.ne"             ; 0x5ci32; NoArg()    ; ()                                                           ;
+F32Lt            ; ()                                                                                   ; "f32.lt"             ; 0x5di32; NoArg()    ; ()                                                           ;
+F32Gt            ; ()                                                                                   ; "f32.gt"             ; 0x5ei32; NoArg()    ; ()                                                           ;
+F32Le            ; ()                                                                                   ; "f32.le"             ; 0x5fi32; NoArg()    ; ()                                                           ;
+F32Ge            ; ()                                                                                   ; "f32.ge"             ; 0x60i32; NoArg()    ; ()                                                           ;
+F64Eq            ; ()                                                                                   ; "f64.eq"             ; 0x61i32; NoArg()    ; ()                                                           ;
+F64Ne            ; ()                                                                                   ; "f64.ne"             ; 0x62i32; NoArg()    ; ()                                                           ;
+F64Lt            ; ()                                                                                   ; "f64.lt"             ; 0x63i32; NoArg()    ; ()                                                           ;
+F64Gt            ; ()                                                                                   ; "f64.gt"             ; 0x64i32; NoArg()    ; ()                                                           ;
+F64Le            ; ()                                                                                   ; "f64.le"             ; 0x65i32; NoArg()    ; ()                                                           ;
+F64Ge            ; ()                                                                                   ; "f64.ge"             ; 0x66i32; NoArg()    ; ()                                                           ;
+I32Clz           ; ()                                                                                   ; "i32.clz"            ; 0x67i32; NoArg()    ; ()                                                           ;
+I32Ctz           ; ()                                                                                   ; "i32.ctz"            ; 0x68i32; NoArg()    ; ()                                                           ;
+I32Popcnt        ; ()                                                                                   ; "i32.popcnt"         ; 0x69i32; NoArg()    ; ()                                                           ;
+I32Add           ; ()                                                                                   ; "i32.add"            ; 0x6ai32; NoArg()    ; ()                                                           ;
+I32Sub           ; ()                                                                                   ; "i32.sub"            ; 0x6bi32; NoArg()    ; ()                                                           ;
+I32Mul           ; ()                                                                                   ; "i32.mul"            ; 0x6ci32; NoArg()    ; ()                                                           ;
+I32DivS          ; ()                                                                                   ; "i32.div_s"          ; 0x6di32; NoArg()    ; ()                                                           ;
+I32DivU          ; ()                                                                                   ; "i32.div_u"          ; 0x6ei32; NoArg()    ; ()                                                           ;
+I32RemS          ; ()                                                                                   ; "i32.rem_s"          ; 0x6fi32; NoArg()    ; ()                                                           ;
+I32RemU          ; ()                                                                                   ; "i32.rem_u"          ; 0x70i32; NoArg()    ; ()                                                           ;
+I32And           ; ()                                                                                   ; "i32.and"            ; 0x71i32; NoArg()    ; ()                                                           ;
+I32Or            ; ()                                                                                   ; "i32.or"             ; 0x72i32; NoArg()    ; ()                                                           ;
+I32Xor           ; ()                                                                                   ; "i32.xor"            ; 0x73i32; NoArg()    ; ()                                                           ;
+I32Shl           ; ()                                                                                   ; "i32.shl"            ; 0x74i32; NoArg()    ; ()                                                           ;
+I32ShrS          ; ()                                                                                   ; "i32.shr_s"          ; 0x75i32; NoArg()    ; ()                                                           ;
+I32ShrU          ; ()                                                                                   ; "i32.shr_u"          ; 0x76i32; NoArg()    ; ()                                                           ;
+I32Rotl          ; ()                                                                                   ; "i32.rotl"           ; 0x77i32; NoArg()    ; ()                                                           ;
+I32Rotr          ; ()                                                                                   ; "i32.rotr"           ; 0x78i32; NoArg()    ; ()                                                           ;
+I64Clz           ; ()                                                                                   ; "i64.clz"            ; 0x79i32; NoArg()    ; ()                                                           ;
+I64Ctz           ; ()                                                                                   ; "i64.ctz"            ; 0x7ai32; NoArg()    ; ()                                                           ;
+I64Popcnt        ; ()                                                                                   ; "i64.popcnt"         ; 0x7bi32; NoArg()    ; ()                                                           ;
+I64Add           ; ()                                                                                   ; "i64.add"            ; 0x7ci32; NoArg()    ; ()                                                           ;
+I64Sub           ; ()                                                                                   ; "i64.sub"            ; 0x7di32; NoArg()    ; ()                                                           ;
+I64Mul           ; ()                                                                                   ; "i64.mul"            ; 0x7ei32; NoArg()    ; ()                                                           ;
+I64DivS          ; ()                                                                                   ; "i64.div_s"          ; 0x7fi32; NoArg()    ; ()                                                           ;
+I64DivU          ; ()                                                                                   ; "i64.div_u"          ; 0x80i32; NoArg()    ; ()                                                           ;
+I64RemS          ; ()                                                                                   ; "i64.rem_s"          ; 0x81i32; NoArg()    ; ()                                                           ;
+I64RemU          ; ()                                                                                   ; "i64.rem_u"          ; 0x82i32; NoArg()    ; ()                                                           ;
+I64And           ; ()                                                                                   ; "i64.and"            ; 0x83i32; NoArg()    ; ()                                                           ;
+I64Or            ; ()                                                                                   ; "i64.or"             ; 0x84i32; NoArg()    ; ()                                                           ;
+I64Xor           ; ()                                                                                   ; "i64.xor"            ; 0x85i32; NoArg()    ; ()                                                           ;
+I64Shl           ; ()                                                                                   ; "i64.shl"            ; 0x86i32; NoArg()    ; ()                                                           ;
+I64ShrS          ; ()                                                                                   ; "i64.shr_s"          ; 0x87i32; NoArg()    ; ()                                                           ;
+I64ShrU          ; ()                                                                                   ; "i64.shr_u"          ; 0x88i32; NoArg()    ; ()                                                           ;
+I64Rotl          ; ()                                                                                   ; "i64.rotl"           ; 0x89i32; NoArg()    ; ()                                                           ;
+I64Rotr          ; ()                                                                                   ; "i64.rotr"           ; 0x8ai32; NoArg()    ; ()                                                           ;
+F32Abs           ; ()                                                                                   ; "f32.abs"            ; 0x8bi32; NoArg()    ; ()                                                           ;
+F32Neg           ; ()                                                                                   ; "f32.neg"            ; 0x8ci32; NoArg()    ; ()                                                           ;
+F32Ceil          ; ()                                                                                   ; "f32.ceil"           ; 0x8di32; NoArg()    ; ()                                                           ;
+F32Floor         ; ()                                                                                   ; "f32.floor"          ; 0x8ei32; NoArg()    ; ()                                                           ;
+F32Trunc         ; ()                                                                                   ; "f32.trunc"          ; 0x8fi32; NoArg()    ; ()                                                           ;
+F32Nearest       ; ()                                                                                   ; "f32.nearest"        ; 0x90i32; NoArg()    ; ()                                                           ;
+F32Sqrt          ; ()                                                                                   ; "f32.sqrt"           ; 0x91i32; NoArg()    ; ()                                                           ;
+F32Add           ; ()                                                                                   ; "f32.add"            ; 0x92i32; NoArg()    ; ()                                                           ;
+F32Sub           ; ()                                                                                   ; "f32.sub"            ; 0x93i32; NoArg()    ; ()                                                           ;
+F32Mul           ; ()                                                                                   ; "f32.mul"            ; 0x94i32; NoArg()    ; ()                                                           ;
+F32Div           ; ()                                                                                   ; "f32.div"            ; 0x95i32; NoArg()    ; ()                                                           ;
+F32Min           ; ()                                                                                   ; "f32.min"            ; 0x96i32; NoArg()    ; ()                                                           ;
+F32Max           ; ()                                                                                   ; "f32.max"            ; 0x97i32; NoArg()    ; ()                                                           ;
+F32Copysign      ; ()                                                                                   ; "f32.copysign"       ; 0x98i32; NoArg()    ; ()                                                           ;
+F64Abs           ; ()                                                                                   ; "f64.abs"            ; 0x99i32; NoArg()    ; ()                                                           ;
+F64Neg           ; ()                                                                                   ; "f64.neg"            ; 0x9ai32; NoArg()    ; ()                                                           ;
+F64Ceil          ; ()                                                                                   ; "f64.ceil"           ; 0x9bi32; NoArg()    ; ()                                                           ;
+F64Floor         ; ()                                                                                   ; "f64.floor"          ; 0x9ci32; NoArg()    ; ()                                                           ;
+F64Trunc         ; ()                                                                                   ; "f64.trunc"          ; 0x9di32; NoArg()    ; ()                                                           ;
+F64Nearest       ; ()                                                                                   ; "f64.nearest"        ; 0x9ei32; NoArg()    ; ()                                                           ;
+F64Sqrt          ; ()                                                                                   ; "f64.sqrt"           ; 0x9fi32; NoArg()    ; ()                                                           ;
+F64Add           ; ()                                                                                   ; "f64.add"            ; 0xa0i32; NoArg()    ; ()                                                           ;
+F64Sub           ; ()                                                                                   ; "f64.sub"            ; 0xa1i32; NoArg()    ; ()                                                           ;
+F64Mul           ; ()                                                                                   ; "f64.mul"            ; 0xa2i32; NoArg()    ; ()                                                           ;
+F64Div           ; ()                                                                                   ; "f64.div"            ; 0xa3i32; NoArg()    ; ()                                                           ;
+F64Min           ; ()                                                                                   ; "f64.min"            ; 0xa4i32; NoArg()    ; ()                                                           ;
+F64Max           ; ()                                                                                   ; "f64.max"            ; 0xa5i32; NoArg()    ; ()                                                           ;
+F64Copysign      ; ()                                                                                   ; "f64.copysign"       ; 0xa6i32; NoArg()    ; ()                                                           ;
+I32WrapI64       ; ()                                                                                   ; "i32.wrap_i64"       ; 0xa7i32; NoArg()    ; ()                                                           ;
+I32TruncF32S     ; ()                                                                                   ; "i32.trunc_f32_s"    ; 0xa8i32; NoArg()    ; ()                                                           ;
+I32TruncF32U     ; ()                                                                                   ; "i32.trunc_f32_u"    ; 0xa9i32; NoArg()    ; ()                                                           ;
+I32TruncF64S     ; ()                                                                                   ; "i32.trunc_f64_s"    ; 0xaai32; NoArg()    ; ()                                                           ;
+I32TruncF64U     ; ()                                                                                   ; "i32.trunc_f64_u"    ; 0xabi32; NoArg()    ; ()                                                           ;
+I64ExtendI32S    ; ()                                                                                   ; "i64.extend_i32_s"   ; 0xaci32; NoArg()    ; ()                                                           ;
+I64ExtendI32U    ; ()                                                                                   ; "i64.extend_i32_u"   ; 0xadi32; NoArg()    ; ()                                                           ;
+I64TruncF32S     ; ()                                                                                   ; "i64.trunc_f32_s"    ; 0xaei32; NoArg()    ; ()                                                           ;
+I64TruncF32U     ; ()                                                                                   ; "i64.trunc_f32_u"    ; 0xafi32; NoArg()    ; ()                                                           ;
+I64TruncF64S     ; ()                                                                                   ; "i64.trunc_f64_s"    ; 0xb0i32; NoArg()    ; ()                                                           ;
+I64TruncF64U     ; ()                                                                                   ; "i64.trunc_f64_u"    ; 0xb1i32; NoArg()    ; ()                                                           ;
+F32ConvertI32S   ; ()                                                                                   ; "f32.convert_i32_s"  ; 0xb2i32; NoArg()    ; ()                                                           ;
+F32ConvertI32U   ; ()                                                                                   ; "f32.convert_i32_u"  ; 0xb3i32; NoArg()    ; ()                                                           ;
+F32ConvertI64S   ; ()                                                                                   ; "f32.convert_i64_s"  ; 0xb4i32; NoArg()    ; ()                                                           ;
+F32ConvertI64U   ; ()                                                                                   ; "f32.convert_i64_u"  ; 0xb5i32; NoArg()    ; ()                                                           ;
+F32DemoteF64     ; ()                                                                                   ; "f32.demote_f64"     ; 0xb6i32; NoArg()    ; ()                                                           ;
+F64ConvertI32S   ; ()                                                                                   ; "f64.convert_i32_s"  ; 0xb7i32; NoArg()    ; ()                                                           ;
+F64ConvertI32U   ; ()                                                                                   ; "f64.convert_i32_u"  ; 0xb8i32; NoArg()    ; ()                                                           ;
+F64ConvertI64S   ; ()                                                                                   ; "f64.convert_i64_s"  ; 0xb9i32; NoArg()    ; ()                                                           ;
+F64ConvertI64U   ; ()                                                                                   ; "f64.convert_i64_u"  ; 0xbai32; NoArg()    ; ()                                                           ;
+F64PromoteF32    ; ()                                                                                   ; "f64.promote_f32"    ; 0xbbi32; NoArg()    ; ()                                                           ;
+I32ReinterpretF32; ()                                                                                   ; "i32.reinterpret_f32"; 0xbci32; NoArg()    ; ()                                                           ;
+I64ReinterpretF64; ()                                                                                   ; "i64.reinterpret_f64"; 0xbdi32; NoArg()    ; ()                                                           ;
+F32ReinterpretI32; ()                                                                                   ; "f32.reinterpret_i32"; 0xbei32; NoArg()    ; ()                                                           ;
+F64ReinterpretI64; ()                                                                                   ; "f64.reinterpret_i64"; 0xbfi32; NoArg()    ; ()                                                           ;
 }};
 }
 
 macro_rules! def_instructions {
-    ($($id:ident { params: ($($arg_key:ident: $arg_tpe:ty),*), $($_rest:tt)* }),*) => {
+    ($($id:ident; ($($arg_key:ident: $arg_tpe:ty),*); $_text:expr; $_opcode:expr; $_parsing:expr; $_typing:expr;)*) => {
         $(
             #[derive(Clone, Debug, PartialEq)]
             pub struct $id {
@@ -194,7 +196,7 @@ macro_rules! def_instructions {
 }
 
 macro_rules! def_instructions_enum {
-    ($($id:ident {$($body:tt)*}),*) => {
+    ($($id:ident; $_arg:expr; $_text:expr; $_opcode:expr; $_parsing:expr; $_typing:expr;)*) => {
         #[derive(Clone, Debug, PartialEq)]
         pub enum Instruction {
             $($id($id)),*

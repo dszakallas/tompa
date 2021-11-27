@@ -1,6 +1,6 @@
 use im_rc;
 
-use crate::format::input::{satisfies, WithParseError};
+use crate::format::input::{WithParseError, WithWrappedInput, satisfies};
 use crate::format::text::lexer::keyword::Keyword;
 use crate::format::text::lexer::{LexerInput, Num, Token};
 use crate::ast::FuncType;
@@ -42,11 +42,6 @@ pub struct IdCtx {
     pub labels: im_rc::Vector<Option<String>>,
     pub typedefs: im_rc::Vector<FuncType>,
 }
-
-pub trait WithWrappedInput {
-    type Inner;
-}
-
 
 /// The main abstraction for parsable inputs.
 pub trait ParserInput<'a>:

@@ -39,12 +39,12 @@ mod test {
 
     #[test]
     fn test_table_type_rule() {
-        &TableType {
+        let _ = &TableType {
             limits: Limits { min: 1 << 16, max: Some(1 << 16) },
             elemtype: FuncRef {},
         }.check(&(), &()).unwrap();
 
-        &TableType {
+        let _ = &TableType {
             limits: Limits { min: 1 << 17, max: Some(1 << 16) },
             elemtype: FuncRef {},
         }.check(&(), &()).unwrap_err();
@@ -53,16 +53,16 @@ mod test {
 
     #[test]
     fn test_memory_type_rule() {
-        &MemType { limits: Limits { min: 1 << 16, max: Some(1 << 16) } }
+        let _ = &MemType { limits: Limits { min: 1 << 16, max: Some(1 << 16) } }
             .check(&(), &()).unwrap();
 
-        &MemType { limits: Limits { min: 1 << 17, max: Some(1 << 17) } }
+        let _ = &MemType { limits: Limits { min: 1 << 17, max: Some(1 << 17) } }
             .check(&(), &()).unwrap_err();
     }
 
     #[test]
     fn test_global_type_rule() {
-        &GlobalType { mut_: Mut::Const, valtype: ValType::I32 }
+        let _ = &GlobalType { mut_: Mut::Const, valtype: ValType::I32 }
             .check(&(), &()).unwrap();
     }
 }

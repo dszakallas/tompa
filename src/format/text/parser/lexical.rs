@@ -16,32 +16,11 @@ use crate::format::text::lexer::{AsChar, NumVariant, hex_num, NumParts, dec_num,
 
 use crate::format::text::lexer::LexerInput;
 use crate::format::text::lexer::Num;
+use crate::format::values::AsUnsigned;
 use std::iter::FromIterator;
 use lexical_core::{FromLexical, Float as LcFloat};
 use num::Float;
 use std::convert::TryFrom;
-
-pub trait FromSigned: Unsigned where Self::Repr: Signed {
-    type Repr;
-
-    fn get(r: Self::Repr) -> Self;
-}
-
-macro_rules! from_signed_impl {
-    ($($from:tt -> $to:tt),*) => {
-        $(
-            impl FromSigned for $to {
-                type Repr = $from;
-
-                fn get(r: Self::Repr) -> Self {
-                    r as Self
-                }
-            }
-        )*
-    }
-}
-
-from_signed_impl!(i8 -> u8, i16 -> u16, i32 -> u32, i64 -> u64, i128 -> u128);
 
 #[inline]
 pub fn parsed_string<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, String, I::Error> {
@@ -126,11 +105,11 @@ pub fn parsed_sxx<'a, Out: num::Signed, I: 'a + LexerInput<'a>>(i: I) -> IResult
 }
 
 #[inline]
-pub fn parsed_ixx<'a, Out: num::Unsigned + FromSigned, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Out, I::Error> {
+pub fn parsed_ixx<'a, Out: num::Unsigned + AsUnsigned, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Out, I::Error> {
     let (i, sign) = peek(sign)(i)?;
 
     match sign {
-        Some(sign) => map(parsed_sxx::<<Out as FromSigned>::Repr, I>, |n| FromSigned::get(n))(i),
+        Some(sign) => map(parsed_sxx::<<Out as AsUnsigned>::Repr, I>, |n| AsUnsigned::get(n))(i),
         None => parsed_uxx::<Out, I>(i),
     }
 }

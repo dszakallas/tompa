@@ -1,20 +1,18 @@
 
-use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice, Offset};
+use nom::{AsChar as NomAsChar, IResult};
 use nom::error::{ParseError, ErrorKind};
 use num::{Unsigned, Signed};
-use crate::format::text::lexer::{AsChar, Token, NumVariant, hex_num, NumParts, dec_num, AsStr, hex_num_digits, LexerInput, dec_num_digits};
+use crate::format::text::lexer::{Token, LexerInput};
 use crate::format::input::satisfies;
 use crate::format::text::parser::lexical::{parsed_uxx, parsed_string, parsed_ixx, parsed_fxx};
 use crate::format::text::parser::ParserInput;
+use crate::format::values::AsUnsigned;
 use lexical_core::FromLexical;
 
 use lexical_core::{Float as LcFloat};
 use num::Float;
 
 use num::FromPrimitive;
-
-use crate::format::text::parser::lexical::FromSigned;
-use std::iter::FromIterator;
 
 use super::ParserError;
 
@@ -68,10 +66,10 @@ pub fn uxx<'a, Out: Unsigned, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Out, 
 }
 
 #[inline]
-pub fn ixx<'a, Out: Unsigned + FromSigned, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Out, I::Error>
+pub fn ixx<'a, Out: Unsigned + AsUnsigned, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Out, I::Error>
     where
         I::Inner: LexerInput<'a>,
-        <Out as FromSigned>::Repr: Signed + FromLexical,
+        <Out as AsUnsigned>::Repr: Signed + FromLexical,
 {
     let (i, lexer_i) = satisfies(|tok: &'a Token<I::Inner>| if let Token::Num(lit, _) = tok {
         Ok(lit)

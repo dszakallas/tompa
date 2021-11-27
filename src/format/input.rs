@@ -129,6 +129,12 @@ pub trait WithParseError: Sized {
     type Error: ParseError<Self>;
 }
 
+pub trait WithWrappedInput {
+    type Inner;
+}
+
+
+
 //
 // pub fn eq<I, Error: ParseError<I>, Item>(item: Item) -> impl Fn(I) -> IResult<I, Item, Error>
 //     where

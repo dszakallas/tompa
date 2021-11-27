@@ -9,7 +9,7 @@ use phf::phf_map;
     phony 'opcodes', so only use these if you are already sure that you are dealing with an instruction.
 */
 macro_rules! to_keywords_cps {
-    ($cb:ident($($args:tt)*) $($id:ident { params: $_params:expr, text: $kw:expr, opcode: $opcode:expr, $($_rest:tt)* }),*) => {
+    ($cb:ident($($args:tt)*) $($id:ident; $_params:expr; $kw:expr; $opcode:expr; $_parse:expr; $_tpe:expr;)*) => {
         $cb!{$($args)* $($id, $kw, $opcode;)*}
     }
 }
