@@ -6,7 +6,7 @@ use nom::combinator::{map, opt, value};
 use nom::multi::{many0, fold_many0};
 use nom::sequence::{pair, preceded, terminated, tuple};
 
-use crate::ast::{FuncRef, GlobalType, Limits, MemType, Mut, TableType, ValType};
+use crate::ast::{FuncRef, GlobalType, Limits, MemType, Mut, ResultType, TableType, ValType};
 
 use crate::format::text::parser::values::uxx;
 use crate::format::text::parser::{keyword, par, ParserInput, id};
@@ -81,7 +81,6 @@ pub fn functype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, FuncType<'a>, I
 pub fn params<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Vec<(Option<&'a str>, ValType)>, I::Error>
     where I::Inner: LexerInput<'a>
 {
-    //par(map(pair(id, valtype), |(id, valtype)| vec![(Some(id), valtype)]))(i)
     fold_many0(
         par(preceded(keyword(Param), alt((
             map(pair(id, valtype), |(id, valtype)| vec![(Some(id), valtype)]),
@@ -104,10 +103,11 @@ pub fn results<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Vec<ValType>, I:
 }
 
 #[inline]
-pub fn resulttype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, ValType, I::Error>
+pub fn resulttype<'a, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, ResultType, I::Error>
     where I::Inner: LexerInput<'a>
 {
-    par(preceded(keyword(Result), valtype))(i)
+    let (i, vt) = opt(par(preceded(keyword(Result), valtype)))(i)?;
+    Ok((i, ResultType { valtype: vt }))
 }
 
 
@@ -159,6 +159,6 @@ mod test {
     fn test_resulttype() {
         let t = lex!("(result f32)").unwrap();
 
-        assert_eq!(consumed!(resulttype, Input::new(&t)), Ok(ValType::F32));
+        assert_eq!(consumed!(resulttype, Input::new(&t)), Ok(ResultType { valtype: Some(ValType::F32) }));
     }
 }

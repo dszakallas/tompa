@@ -13,9 +13,9 @@ Name             ; Parameters                                                   
 */
 Unreachable      ; ()                                                                                   ; "unreachable"        ; 0x00i32; NoArg()    ; UnreachableType { }                                          ;
 Nop              ; ()                                                                                   ; "nop"                ; 0x01i32; NoArg()    ; NopType { }                                                  ;
-Block            ; (result: Option<ValType>, instrs: Vec<Instruction>)                                  ; "block"              ; 0x02i32; Block()    ; BlockType {}                                                 ;
-Loop             ; (result: Option<ValType>, instrs: Vec<Instruction>)                                  ; "loop"               ; 0x03i32; Loop()     ; LoopType {}                                                  ;
-If               ; (result: Option<ValType>, if_instrs: Vec<Instruction>, else_instrs: Vec<Instruction>); "if"                 ; 0x04i32; If()       ; IfType {}                                                    ;
+Block            ; (result: ResultType, instrs: Vec<Instruction>)                                  ; "block"              ; 0x02i32; Block()    ; BlockType {}                                                 ;
+Loop             ; (result: ResultType, instrs: Vec<Instruction>)                                  ; "loop"               ; 0x03i32; Loop()     ; LoopType {}                                                  ;
+If               ; (result: ResultType, if_instrs: Vec<Instruction>, else_instrs: Vec<Instruction>); "if"                 ; 0x04i32; If()       ; IfType {}                                                    ;
 Br               ; ()                                                                                   ; "br"                 ; 0x0ci32; NoArg()    ; BrType {}                                                    ;
 BrIf             ; ()                                                                                   ; "br_if"              ; 0x0di32; NoArg()    ; BrIfType {}                                                  ;
 BrTable          ; ()                                                                                   ; "br_table"           ; 0x0ei32; NoArg()    ; BrTableType {}                                               ;

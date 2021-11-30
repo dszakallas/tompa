@@ -1,7 +1,7 @@
 
 use std::{error::Error, fmt::{self, Display, Formatter}, ops::{Range, RangeFrom, RangeTo}};
 
-use nom::{AsBytes, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Slice};
+use nom::{AsBytes, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Slice};
 
 use super::{input::{WithParseError, WithWrappedInput}};
 
@@ -32,41 +32,13 @@ pub trait BinaryInput<'a>: Clone
     + Offset
     + WithParseError
     + AsBytes
+    + Compare<&'a[u8]>
     + std::fmt::Debug
 {
     type InputIterItem;
     type InputTakeAtPositionItem;
 }
 
-
-// /// The main abstraction for parsable inputs.
-// pub trait BinaryParserInput<'a>:
-// Clone
-//     + PartialEq
-//     + Slice<RangeFrom<usize>>
-//     + WithWrappedInput
-//     + WithParseError
-//     + InputIter<Item = &'a Token<<Self as WithWrappedInput>::Inner>>
-//     + InputLength
-// where
-//     <Self as WithWrappedInput>::Inner: BinaryInput<'a> + 'a,
-// {
-//     type InputIterItem;
-// }
-
-// impl<'a, I: 'a> ParserInput<'a> for I
-// where
-//     I: Clone
-//     + PartialEq
-//     + WithWrappedInput
-//     + WithParseError
-//     + Slice<RangeFrom<usize>>
-//     + InputIter<Item = &'a Token<<Self as WithWrappedInput>::Inner>>
-//     + InputLength,
-// <Self as WithWrappedInput>::Inner: BinaryInput<'a> + 'a,
-// {
-//     type InputIterItem = <Self as InputIter>::Item;
-// }
-
 mod values;
 mod types;
+mod instructions;

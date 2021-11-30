@@ -36,9 +36,9 @@ use crate::format::text::parser::values::uxx;
 #[derive(Clone, Debug)]
 pub enum InstrParseType {
     NoArg(fn() -> Instruction),
-    Block(fn(Option<ValType>, Vec<Instruction>) -> Instruction),
-    Loop(fn(Option<ValType>, Vec<Instruction>) -> Instruction),
-    If(fn(Option<ValType>, Vec<Instruction>, Vec<Instruction>) -> Instruction),
+    Block(fn(ResultType, Vec<Instruction>) -> Instruction),
+    Loop(fn(ResultType, Vec<Instruction>) -> Instruction),
+    If(fn(ResultType, Vec<Instruction>, Vec<Instruction>) -> Instruction),
     LocalIdx(fn(LocalIdx) -> Instruction),
     GlobalIdx(fn(GlobalIdx) -> Instruction),
     LabelIdx(fn(LabelIdx) -> Instruction),
@@ -59,7 +59,7 @@ fn block<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResu
 {
     move |i: I| {
         let (i, inner_ctx) = label(ctx)(i)?;
-        let (i, result) = opt(resulttype)(i)?;
+        let (i, result) = resulttype(i)?;
         let (i, instrs) = many0(instr(&inner_ctx))(i)?;
         let (i, _) = keyword(Keyword::End)(i)?;
         let (i, _) = id_checker(&inner_ctx)(i)?;
@@ -74,7 +74,7 @@ fn loop_<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResu
 {
     move |i: I| {
         let (i, inner_ctx) = label(ctx)(i)?;
-        let (i, result) = opt(resulttype)(i)?;
+        let (i, result) = resulttype(i)?;
         let (i, instrs) = many0(instr(&inner_ctx))(i)?;
         let (i, _) = keyword(Keyword::End)(i)?;
         let (i, _) = id_checker(&inner_ctx)(i)?;
@@ -88,7 +88,7 @@ fn if_<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult
         I::Inner: LexerInput<'a>, {
     move |i: I| {
         let (i, inner_ctx) = label(ctx)(i)?;
-        let (i, result) = opt(resulttype)(i)?;
+        let (i, result) = resulttype(i)?;
         let (i, if_instrs) = many0(instr(&inner_ctx))(i)?;
         let (i, else_) = opt(keyword(Keyword::Else))(i)?;
         let (i, else_instrs) = if let Some(_) = else_ {
@@ -425,7 +425,7 @@ mod test {
     #[test]
     fn test_block() {
         {
-            let res = Instruction::Block(Block{ result: Some(ValType::F32), instrs: vec![]});
+            let res = Instruction::Block(Block{ result: ResultType { valtype: Some(ValType::F32) }, instrs: vec![]});
             {
                 let t = lex!("block (result f32) end").unwrap();
                 assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
@@ -444,7 +444,7 @@ mod test {
             }
         }
         {
-            let res = Instruction::Block(Block{ result: None, instrs: vec![]});
+            let res = Instruction::Block(Block{ result: ResultType { valtype: None }, instrs: vec![]});
             {
                 let t = lex!("block $a end $a").unwrap();
                 assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
@@ -455,7 +455,7 @@ mod test {
     #[test]
     fn test_loop() {
         {
-            let res = Instruction::Loop(Loop{ result: Some(ValType::F32), instrs: vec![]});
+            let res = Instruction::Loop(Loop{ result: ResultType { valtype: Some(ValType::F32) }, instrs: vec![]});
             {
                 let t = lex!("loop (result f32) end").unwrap();
                 assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
@@ -474,7 +474,7 @@ mod test {
             }
         }
         {
-            let res = Instruction::Loop(Loop{ result: None, instrs: vec![]});
+            let res = Instruction::Loop(Loop{ result: ResultType { valtype: None }, instrs: vec![]});
             {
                 let t = lex!("loop $a end $a").unwrap();
                 assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
@@ -485,7 +485,7 @@ mod test {
     #[test]
     fn test_if() {
         {
-            let res = Instruction::If(If{ result: Some(ValType::F32), if_instrs: vec![], else_instrs: vec![] });
+            let res = Instruction::If(If{ result: ResultType { valtype: Some(ValType::F32) }, if_instrs: vec![], else_instrs: vec![] });
             {
                 let t = lex!("if (result f32) end").unwrap();
                 assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
@@ -516,7 +516,7 @@ mod test {
             }
         }
         {
-            let res = Instruction::If(If{ result: None, if_instrs: vec![], else_instrs: vec![]});
+            let res = Instruction::If(If{ result: ResultType { valtype: None }, if_instrs: vec![], else_instrs: vec![]});
             {
                 let t = lex!("if $a end $a").unwrap();
                 assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));

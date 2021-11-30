@@ -21,6 +21,11 @@ impl ValType {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ResultType {
+    pub valtype: Option<ValType>
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Sx {
     U,
     S,

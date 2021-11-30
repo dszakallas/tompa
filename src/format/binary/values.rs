@@ -1,4 +1,4 @@
-use nom::{IResult, ToUsize, bytes::complete::take, combinator::map, error::{ErrorKind, ParseError}};
+use nom::{AsBytes, IResult, ToUsize, bytes::complete::take, combinator::map, error::{ErrorKind, ParseError}, multi::many_m_n};
 use num::Float;
 
 use crate::format::values::{AsUnsigned, FromBytes};
@@ -7,6 +7,23 @@ use super::{BinaryError, BinaryInput};
 
 use std::{convert::TryInto, mem::size_of, ops::{Add, BitOrAssign, Shl}};
 
+
+pub fn vec_<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, I, I::Error> {
+    let (i, n) = uxx::<u32, I>(i)?;
+    take(n)(i)
+}
+
+#[inline]
+pub fn byte<'a, I: 'a + BinaryInput<'a>>(b: u8) -> impl Fn(I) -> IResult<I, u8, I::Error> {
+    move |i: I| {
+        let (i, ib) = take(1u8)(i)?;
+        if let b = ib.as_bytes()[0] {
+            Ok((i, b))
+        } else {
+            Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Tag)))
+        }
+    }
+}
 
 pub fn uxx<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Error>
     where
@@ -78,14 +95,10 @@ where
 pub fn fxx<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Error> where
     Out: Float + FromBytes {
     let (i, bytes) = take(<Out as FromBytes>::N)(i)?;
-    let res = Out::from_le_bytes(i.as_bytes());
+    let res = Out::from_le_bytes(bytes.as_bytes());
     Ok((i, res))
 }
 
 
 #[cfg(test)]
-mod test {
-    fn test_uxx() {
-        
-    }
-}
+mod test { }
