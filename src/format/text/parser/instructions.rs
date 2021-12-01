@@ -7,6 +7,8 @@ use nom::multi::{many0, many1};
 
 use crate::ast::*;
 
+use crate::format::instructions::{INSTR_PARSERS, InstrParseType};
+
 use crate::format::text::parser::{id, keyword, WithWrappedInput, anykeyword, par, parc};
 use crate::format::text::parser::ParserInput;
 use crate::format::text::parser::IdCtx;
@@ -25,32 +27,10 @@ use crate::format::text::lexer::AsStr;
 
 use crate::format::text::parser::ParserError;
 
-use phf::phf_map;
-
 use std::result::Result as StdResult;
 use std::collections::HashSet;
 use nom::branch::alt;
 use crate::format::text::parser::values::uxx;
-
-
-#[derive(Clone, Debug)]
-pub enum InstrParseType {
-    NoArg(fn() -> Instruction),
-    Block(fn(ResultType, Vec<Instruction>) -> Instruction),
-    Loop(fn(ResultType, Vec<Instruction>) -> Instruction),
-    If(fn(ResultType, Vec<Instruction>, Vec<Instruction>) -> Instruction),
-    LocalIdx(fn(LocalIdx) -> Instruction),
-    GlobalIdx(fn(GlobalIdx) -> Instruction),
-    LabelIdx(fn(LabelIdx) -> Instruction),
-    LabelIdxN(fn(Vec<LabelIdx>) -> Instruction),
-    FuncIdx(fn(FuncIdx) -> Instruction),
-    TypeIdx(fn(TypeIdx) -> Instruction),
-    MemLs(u32, fn(Memarg) -> Instruction),
-    ConstI32(fn(u32) -> Instruction),
-    ConstI64(fn(u64) -> Instruction),
-    ConstF32(fn(f32) -> Instruction),
-    ConstF64(fn(f64) -> Instruction),
-}
 
 #[inline]
 fn block<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Block, I::Error> + 'b
@@ -104,17 +84,6 @@ fn if_<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult
     }
 }
 
-macro_rules! def_instruction_parser_helpers {
-    ($($id:ident; ($($pname:ident: $pty:ty),*); $_text:expr; $opcode:expr; $parse_tpe:ident($($arg:expr),*); $_rule:expr;)*) => {
-        static INSTR_PARSERS: phf::Map<i32, InstrParseType> = phf_map! {
-            $(
-                $opcode => InstrParseType::$parse_tpe($($arg,)* |$($pname: $pty),*| crate::ast::Instruction::$id(crate::ast::$id { $($pname),* }))
-            ),*
-        };
-    }
-}
-
-instruction_defs_cps!(def_instruction_parser_helpers());
 
 macro_rules! def_idx_parsers {
     ($($name:ident -> $table_name:ident),*) => {
@@ -152,7 +121,7 @@ pub fn instr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) 
     move |i: I| {
         // FIXME we might need to handle terminal folded instructions here
         let (i, (inner_i, kw)) = anykeyword(i)?;
-        match INSTR_PARSERS.get(&(*kw as i32)) {
+        match INSTR_PARSERS.get(&(*kw as u8)) {
             Some(InstrParseType::Block(_)) => map(block(ctx), |v| Instruction::Block(v))(i),
             Some(InstrParseType::Loop(_)) => map(loop_(ctx), |v| Instruction::Loop(v))(i),
             Some(InstrParseType::If(_)) => map(if_(ctx), |v| Instruction::If(v))(i),
@@ -191,7 +160,7 @@ pub fn plaininstr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl F
     move |i: I| {
         // FIXME we might need to handle terminal folded instructions here
         let (i, (inner_i, kw)) = anykeyword(i)?;
-        match INSTR_PARSERS.get(&(*kw as i32)) {
+        match INSTR_PARSERS.get(&(*kw as u8)) {
             Some(InstrParseType::NoArg(constr)) => Ok((i, constr())),
             Some(InstrParseType::LocalIdx(constr)) => map(localidx(ctx), constr)(i),
             Some(InstrParseType::GlobalIdx(constr)) => map(globalidx(ctx), constr)(i),
