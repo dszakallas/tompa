@@ -5,8 +5,6 @@ use nom::{AsBytes, Compare, InputIter, InputLength, InputTake, InputTakeAtPositi
 
 use super::{input::{WithParseError, WithWrappedInput}};
 
-
-
 #[derive(Debug)]
 pub struct BinaryError;
 
@@ -42,3 +40,4 @@ pub trait BinaryInput<'a>: Clone
 mod values;
 mod types;
 mod instructions;
+mod modules;

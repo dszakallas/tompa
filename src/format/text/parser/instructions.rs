@@ -7,7 +7,7 @@ use nom::multi::{many0, many1};
 
 use crate::ast::*;
 
-use crate::format::instructions::{INSTR_PARSERS, InstrParseType};
+use crate::format::text::instructions::{INSTR_PARSERS, InstrParseType};
 
 use crate::format::text::parser::{id, keyword, WithWrappedInput, anykeyword, par, parc};
 use crate::format::text::parser::ParserInput;
@@ -15,7 +15,7 @@ use crate::format::text::parser::IdCtx;
 
 use crate::format::text::lexer::LexerInput;
 
-use crate::format::text::lexer::keyword::Keyword;
+use crate::format::text::keywords::Keyword;
 
 use crate::format::text::parser::types::{resulttype, params, results};
 use crate::format::text::parser::values::{ixx, fxx};
@@ -31,6 +31,9 @@ use std::result::Result as StdResult;
 use std::collections::HashSet;
 use nom::branch::alt;
 use crate::format::text::parser::values::uxx;
+
+
+use crate::ast::{FuncIdx, GlobalIdx, Instruction, LabelIdx, LocalIdx, Memarg, ResultType, TypeIdx};
 
 #[inline]
 fn block<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Block, I::Error> + 'b
@@ -120,27 +123,27 @@ pub fn instr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) 
 {
     move |i: I| {
         // FIXME we might need to handle terminal folded instructions here
-        let (i, (inner_i, kw)) = anykeyword(i)?;
-        match INSTR_PARSERS.get(&(*kw as u8)) {
+        let (i, (inner_i, _)) = anykeyword(i)?;
+        match INSTR_PARSERS.get(inner_i.as_str()) {
             Some(InstrParseType::Block(_)) => map(block(ctx), |v| Instruction::Block(v))(i),
             Some(InstrParseType::Loop(_)) => map(loop_(ctx), |v| Instruction::Loop(v))(i),
             Some(InstrParseType::If(_)) => map(if_(ctx), |v| Instruction::If(v))(i),
             Some(InstrParseType::NoArg(constr)) => Ok((i, constr())),
             Some(InstrParseType::LocalIdx(constr)) => map(localidx(ctx), constr)(i),
             Some(InstrParseType::GlobalIdx(constr)) => map(globalidx(ctx), constr)(i),
-            Some(InstrParseType::LabelIdx(constr)) => map(labelidx(ctx), constr)(i),
-            Some(InstrParseType::LabelIdxN(constr)) => map(many1(labelidx(ctx)), constr)(i),
-            Some(InstrParseType::FuncIdx(constr)) => map(funcidx(ctx), constr)(i),
-            Some(InstrParseType::TypeIdx(constr)) => {
-                let (ok_i, (typeidx, locals)) = typeuse(ctx)(i.clone())?;
-                for l in locals.iter() {
-                    if let Some(_) = l {
-                        // id ctx most be empty
-                        return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)));
-                    }
-                };
-                Ok((ok_i, constr(typeidx)))
-            }
+            // Some(InstrParseType::LabelIdx(constr)) => map(labelidx(ctx), constr)(i),
+            // Some(InstrParseType::LabelIdxN(constr)) => map(many1(labelidx(ctx)), constr)(i),
+            // Some(InstrParseType::FuncIdx(constr)) => map(funcidx(ctx), constr)(i),
+            // Some(InstrParseType::TypeIdx(constr)) => {
+            //     let (ok_i, (typeidx, locals)) = typeuse(ctx)(i.clone())?;
+            //     for l in locals.iter() {
+            //         if let Some(_) = l {
+            //             // id ctx most be empty
+            //             return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)));
+            //         }
+            //     };
+            //     Ok((ok_i, constr(typeidx)))
+            // }
             Some(InstrParseType::MemLs(default_align, constr)) => {
                 map(memarg(*default_align), constr)(i)
             },
@@ -149,42 +152,6 @@ pub fn instr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) 
             Some(InstrParseType::ConstF32(constr)) => map(fxx::<f32, I>, constr)(i),
             Some(InstrParseType::ConstF64(constr)) => map(fxx::<f64, I>, constr)(i),
             None => Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Char))),
-        }
-    }
-}
-
-#[inline]
-pub fn plaininstr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Instruction, I::Error> + 'b
-    where I::Inner: LexerInput<'a>,
-{
-    move |i: I| {
-        // FIXME we might need to handle terminal folded instructions here
-        let (i, (inner_i, kw)) = anykeyword(i)?;
-        match INSTR_PARSERS.get(&(*kw as u8)) {
-            Some(InstrParseType::NoArg(constr)) => Ok((i, constr())),
-            Some(InstrParseType::LocalIdx(constr)) => map(localidx(ctx), constr)(i),
-            Some(InstrParseType::GlobalIdx(constr)) => map(globalidx(ctx), constr)(i),
-            Some(InstrParseType::LabelIdx(constr)) => map(labelidx(ctx), constr)(i),
-            Some(InstrParseType::LabelIdxN(constr)) => map(many1(labelidx(ctx)), constr)(i),
-            Some(InstrParseType::FuncIdx(constr)) => map(funcidx(ctx), constr)(i),
-            Some(InstrParseType::TypeIdx(constr)) => {
-                let (ok_i, (typeidx, locals)) = typeuse(ctx)(i.clone())?;
-                for l in locals.iter() {
-                    if let Some(_) = l {
-                        // id ctx most be empty
-                        return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)));
-                    }
-                };
-                Ok((ok_i, constr(typeidx)))
-            }
-            Some(InstrParseType::MemLs(default_align, constr)) => {
-                map(memarg(*default_align), constr)(i)
-            },
-            Some(InstrParseType::ConstI32(constr)) => map(ixx::<u32, I>, constr)(i),
-            Some(InstrParseType::ConstI64(constr)) => map(ixx::<u64, I>, constr)(i),
-            Some(InstrParseType::ConstF32(constr)) => map(fxx::<f32, I>, constr)(i),
-            Some(InstrParseType::ConstF64(constr)) => map(fxx::<f64, I>, constr)(i),
-            _ => Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Char))),
         }
     }
 }

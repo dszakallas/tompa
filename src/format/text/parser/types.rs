@@ -11,7 +11,7 @@ use crate::ast::{FuncRef, GlobalType, Limits, MemType, Mut, ResultType, TableTyp
 use crate::format::text::parser::values::uxx;
 use crate::format::text::parser::{keyword, par, ParserInput, id};
 use crate::format::text::lexer::{LexerInput};
-use crate::format::text::lexer::keyword::Keyword::*;
+use crate::format::text::keywords::Keyword::*;
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct FuncType<'a> {

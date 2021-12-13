@@ -1,7 +1,9 @@
+#![macro_use]
+
 use im_rc;
 
 use crate::format::input::{WithParseError, WithWrappedInput, satisfies};
-use crate::format::text::lexer::keyword::Keyword;
+use crate::format::text::keywords::Keyword;
 use crate::format::text::lexer::{LexerInput, Num, Token};
 use crate::ast::FuncType;
 use nom::sequence::delimited;

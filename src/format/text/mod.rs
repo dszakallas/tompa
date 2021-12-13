@@ -17,8 +17,8 @@ mod test {
     }
 }
 
+mod instructions;
+mod keywords;
 mod lexer;
+pub(crate) mod parser;
 
-#[macro_use]
-pub mod parser;
-mod printer;

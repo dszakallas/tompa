@@ -18,8 +18,8 @@ use nom::sequence::{pair, preceded, terminated, tuple};
 
 use nom_locate::{LocatedSpan};
 
-use keyword::Keyword;
-use keyword::KEYWORDS_PHF;
+use crate::format::text::keywords::Keyword;
+use crate::format::text::keywords::KEYWORDS_PHF;
 use crate::format::input::WithParseError;
 
 
@@ -144,8 +144,8 @@ pub fn token<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Token<I>, I::Error>
         token_like(no_junk(string), |i, _| Token::String(i)),
         token_like(no_junk(num), |i, n| Token::Num(i, n)),
         token_like(no_junk(id), |i, _| Token::Id(i)),
-        token_like(char('('), |i, _| Token::LPar),
-        token_like(char(')'), |i, _| Token::RPar),
+        token_like(char('('), |_, _| Token::LPar),
+        token_like(char(')'), |_, _| Token::RPar),
         token_like(no_junk(keyword), |i, kw| Token::Keyword(i, kw))
     ))(i)
 }
@@ -571,5 +571,3 @@ mod test {
         assert_eq!(token("$abcd)"), Ok((")", Token::Id("$abcd"))));
     }
 }
-
-pub(crate) mod keyword;
