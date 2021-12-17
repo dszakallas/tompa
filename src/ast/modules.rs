@@ -62,7 +62,7 @@ pub enum ImportDesc {
 pub struct Import {
     pub module: Name,
     pub name: Name,
-    pub expr: ImportDesc,
+    pub importdesc: ImportDesc,
 }
 
 #[derive(Clone, Debug, PartialEq)]

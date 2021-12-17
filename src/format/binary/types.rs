@@ -47,12 +47,10 @@ pub fn functype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, FuncType, I::Er
 
     let (i, _) = byte(0x60u8)(i)?;
 
-    let (i, vec_i) = vec_(i)?;
-    let (_, parameters) = many0(valtype)(vec_i)?;
-    let (i, vec_i) = vec_(i)?;
-    let (_, results) = many0(valtype)(vec_i)?;
+    let (i, parameters) = vec_(valtype)(i)?;
+    let (i, results) = vec_(valtype)(i)?;
 
-    Ok((i, FuncType { parameters: parameters, results: results }))
+    Ok((i, FuncType { parameters, results }))
 }
 
 #[inline]

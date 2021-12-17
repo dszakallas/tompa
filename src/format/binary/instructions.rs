@@ -1,7 +1,7 @@
 use nom::combinator::{map, opt};
 use nom::error::{ErrorKind, ParseError};
 use nom::multi::many0;
-use nom::sequence::preceded;
+use nom::sequence::{preceded, terminated};
 use nom::{IResult, bytes::complete::take};
 
 use super::BinaryInput;
@@ -258,7 +258,7 @@ fn memgrow<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, (), I::Error> {
     Ok((i, ()))
 } 
 
-fn instr<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Instruction, I::Error> {
+pub fn instr<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Instruction, I::Error> {
     let (i, ib) = take(1u8)(i)?;
     let b = ib.as_bytes()[0];
     match INSTR_PARSERS.get(&b) {
@@ -289,4 +289,8 @@ fn instr<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Instruction, I::Error>
         Some(InstrParseType::ConstF64(constr)) => map(fxx::<f64, I>, constr)(i),
         None => Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Char))),
     }
+}
+
+pub fn expr<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Vec<Instruction>, I::Error> {
+    terminated(many0(instr), byte(0x0B))(i)
 }

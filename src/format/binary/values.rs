@@ -1,4 +1,4 @@
-use nom::{AsBytes, IResult, ToUsize, bytes::complete::take, combinator::map, error::{ErrorKind, ParseError}, multi::many_m_n};
+use nom::{AsBytes, IResult, ToUsize, bytes::complete::take, combinator::{map, map_res}, error::{ErrorKind, ParseError}, multi::many_m_n};
 use num::Float;
 
 use crate::format::values::{AsUnsigned, FromBytes};
@@ -8,9 +8,23 @@ use super::{BinaryError, BinaryInput};
 use std::{convert::TryInto, mem::size_of, ops::{Add, BitOrAssign, Shl}};
 
 
-pub fn vec_<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, I, I::Error> {
+use std::str;
+
+pub fn name<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, String, I::Error> {
     let (i, n) = uxx::<u32, I>(i)?;
-    take(n)(i)
+    map_res(
+        take(n),
+        |b: I| str::from_utf8(b.as_bytes()).map(|s| s.to_owned())
+    )(i)
+}
+
+pub fn vec_<'a, Out, F, I: 'a + BinaryInput<'a>>(f: F) -> impl FnOnce(I) -> IResult<I, Vec<Out>, I::Error> where
+F: Fn(I) -> IResult<I, Out, I::Error>
+{
+    |i: I| {
+        let (i, n) = uxx::<u32, I>(i)?;
+        many_m_n(n as usize, n as usize, f)(i)
+    }
 }
 
 #[inline]
