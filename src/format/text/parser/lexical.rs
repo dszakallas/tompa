@@ -6,8 +6,6 @@ use nom::bytes::complete::{tag, take_while, take_while_m_n};
 use nom::character::complete::{char};
 use nom::combinator::{map, map_res, opt, peek, value};
 
-use num::{Signed, Unsigned};
-
 use nom::sequence::{delimited, pair};
 
 use num::FromPrimitive;

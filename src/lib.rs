@@ -2,6 +2,7 @@
 #![feature(associated_type_bounds)]
 #![feature(trace_macros)]
 #![feature(never_type)]
+#![feature(iter_zip)]
 extern crate im_rc;
 extern crate nom;
 extern crate ena;

@@ -27,7 +27,7 @@ pub struct Global {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Export {
     pub name: Name,
-    pub expr: ExportDesc,
+    pub exportdesc: ExportDesc,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -66,14 +66,14 @@ pub struct Import {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ElementSegment {
+pub struct Element {
     pub table: TableIdx,
     pub offset: Vec<Instruction>,
     pub init: Vec<FuncIdx>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct DataSegment {
+pub struct Data {
     pub data: MemIdx,
     pub offset: Vec<Instruction>,
     pub init: Vec<u8>,
@@ -89,8 +89,8 @@ pub struct Module {
     pub tables: Vec<Table>,
     pub mems: Vec<Mem>,
     pub globals: Vec<Global>,
-    pub elem: Vec<ElementSegment>,
-    pub data: Vec<DataSegment>,
+    pub elem: Vec<Element>,
+    pub data: Vec<Data>,
     pub start: Option<Start>,
     pub imports: Vec<Import>,
     pub exports: Vec<Export>,

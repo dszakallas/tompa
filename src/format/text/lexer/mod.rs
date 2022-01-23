@@ -34,8 +34,6 @@ impl<'a> Display for LexerError {
     }
 }
 
-type Span<'a> = LocatedSpan<&'a str>;
-
 macro_rules! assign_input {
     ($input:ident, $parser:expr) => {{
         let (i, r) = $parser($input)?;

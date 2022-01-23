@@ -124,6 +124,7 @@ impl<'a, I: 'a> InputIter for Input<'a, I> {
     }
 }
 
+
 /// Helper trait for associating an Error type.
 pub trait WithParseError: Sized {
     type Error: ParseError<Self>;
@@ -133,26 +134,9 @@ pub trait WithWrappedInput {
     type Inner;
 }
 
+type PResult<I, T> = IResult<I, T, <I as WithParseError>::Error>;
 
-
-//
-// pub fn eq<I, Error: ParseError<I>, Item>(item: Item) -> impl Fn(I) -> IResult<I, Item, Error>
-//     where
-//         I: Slice<RangeFrom<usize>> + InputIter,
-//         I: InputIter<Item=Item>,
-//         Item: PartialEq + Clone
-// {
-//     move |i: I| match (i).iter_elements().next().map(|t| {
-//         let b = &t == &item;
-//         ((&item).clone(), b)
-//     }) {
-//         Some((item, true)) => Ok((i.slice(1..), item)),
-//         _ => Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Char))),
-//     }
-// }
-
-
-pub fn pred<I, Error: ParseError<I>, P, Item>(p: P) -> impl Fn(I) -> IResult<I, Item, Error>
+pub fn pred<I: WithParseError, P, Item>(p: P) -> impl Fn(I) -> PResult<I, Item>
     where
         I: Slice<RangeFrom<usize>> + InputIter<Item=Item>,
         P: Fn(&Item) -> bool
@@ -162,12 +146,12 @@ pub fn pred<I, Error: ParseError<I>, P, Item>(p: P) -> impl Fn(I) -> IResult<I, 
         (t, b)
     }) {
         Some((item, true)) => Ok((i.slice(1..), item)),
-        _ => Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Char))),
+        _ => Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Char))),
     }
 }
 
 #[inline]
-pub fn satisfies<I, Error: ParseError<I>, F, O>(f: F) -> impl Fn(I) -> IResult<I, O, Error>
+pub fn satisfies<I: WithParseError, F, O>(f: F) -> impl Fn(I) -> PResult<I, O>
     where
         I: Slice<RangeFrom<usize>> + InputIter,
         F: Fn(<I as InputIter>::Item) -> Result<O, ParserError>
@@ -175,7 +159,7 @@ pub fn satisfies<I, Error: ParseError<I>, F, O>(f: F) -> impl Fn(I) -> IResult<I
     move |i: I| {
         match (i).iter_elements().next().map_or_else(|| Err(ParserError), |t| f(t)) {
             Ok(o) => Ok((i.slice(1..), o)),
-            Err(_) => Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::MapRes))),
+            Err(_) => Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::MapRes))),
         }
     }}
 

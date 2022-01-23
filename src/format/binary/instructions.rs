@@ -17,7 +17,7 @@ $($args)*
 /*
 Keep tabulated with column -t -s ";" -o ";" table > table_organized
 
-Name             ; Parameters                                                                           ; Opcode;            ;
+Name             ; Parameters                                                                           ; Opcode; ParseType  ;
 */
 Unreachable      ; ()                                                                                   ; 0x00u8; NoArg()    ;
 Nop              ; ()                                                                                   ; 0x01u8; NoArg()    ;

@@ -1,13 +1,8 @@
-use nom::{AsBytes, IResult, ToUsize, bytes::complete::take, combinator::{map, map_res}, error::{ErrorKind, ParseError}, multi::many_m_n};
+use nom::{IResult, bytes::complete::take, combinator::{map, map_res}, error::{ErrorKind, ParseError}, multi::many_m_n};
 use num::Float;
-
 use crate::format::values::{AsUnsigned, FromBytes};
-
-use super::{BinaryError, BinaryInput};
-
-use std::{convert::TryInto, mem::size_of, ops::{Add, BitOrAssign, Shl}};
-
-
+use super::BinaryInput;
+use std::{mem::size_of, ops::{BitOrAssign, Shl}};
 use std::str;
 
 pub fn name<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, String, I::Error> {
@@ -25,6 +20,11 @@ F: Fn(I) -> IResult<I, Out, I::Error>
         let (i, n) = uxx::<u32, I>(i)?;
         many_m_n(n as usize, n as usize, f)(i)
     }
+}
+
+pub fn vec_of_byte<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Vec<u8>, I::Error> {
+    let (i, n) = uxx::<u32, I>(i)?;
+    map(take(n), |i: I| i.as_bytes().to_vec())(i)
 }
 
 #[inline]
