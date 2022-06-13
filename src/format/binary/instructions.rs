@@ -201,10 +201,6 @@ pub enum InstrParseType {
     If(fn(ResultType, Vec<Instruction>, Vec<Instruction>) -> Instruction),
     LocalIdx(fn(LocalIdx) -> Instruction),
     GlobalIdx(fn(GlobalIdx) -> Instruction),
-    // LabelIdx(fn(LabelIdx) -> Instruction),
-    // LabelIdxN(fn(Vec<LabelIdx>) -> Instruction),
-    // FuncIdx(fn(FuncIdx) -> Instruction),
-    // TypeIdx(fn(TypeIdx) -> Instruction),
     MemLs(fn(Memarg) -> Instruction),
     MemGrow(fn() -> Instruction),
     ConstI32(fn(u32) -> Instruction),
@@ -268,19 +264,6 @@ pub fn instr<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Instruction, I::Er
         Some(InstrParseType::NoArg(constr)) => Ok((i, constr())),
         Some(InstrParseType::LocalIdx(constr)) => map(uxx::<u32, I>, constr)(i),
         Some(InstrParseType::GlobalIdx(constr)) => map(uxx::<u32, I>, constr)(i),
-        // Some(InstrParseType::LabelIdx(constr)) => map(uxx::<u32, I>, constr)(i),
-        // Some(InstrParseType::LabelIdxN(constr)) => map(pair(vec_, uxx::<u32>), constr)(i),
-        // Some(InstrParseType::FuncIdx(constr)) => map(uxx::<u32, I>, constr)(i),
-        // Some(InstrParseType::TypeIdx(constr)) => {
-        //     let (ok_i, (typeidx, locals)) = typeuse(ctx)(i.clone())?;
-        //     for l in locals.iter() {
-        //         if let Some(_) = l {
-        //             // id ctx most be empty
-        //             return Err(nom::Err::Error(ParseError::from_error_kind(i.clone(), ErrorKind::Char)));
-        //         }
-        //     };
-        //     Ok((ok_i, constr(typeidx)))
-        // }
         Some(InstrParseType::MemLs(constr)) => map(memarg, constr)(i),
         Some(InstrParseType::MemGrow(constr)) => map(memgrow, |_| constr())(i),
         Some(InstrParseType::ConstI32(constr)) => map(ixx::<u32, I>, constr)(i),

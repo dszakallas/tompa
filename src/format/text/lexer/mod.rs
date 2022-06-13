@@ -5,7 +5,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::ops::RangeFrom;
 
-use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice, Offset, Err};
+use nom::{AsChar as NomAsChar, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, IResult, Slice, Offset};
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::character::complete::{anychar, char, not_line_ending, hex_digit1, digit1};
@@ -15,8 +15,6 @@ use nom::error::{ParseError, ErrorKind};
 use nom::lib::std::ops::{Range, RangeTo};
 use nom::multi::{many0, separated_nonempty_list};
 use nom::sequence::{pair, preceded, terminated, tuple};
-
-use nom_locate::{LocatedSpan};
 
 use crate::format::text::keywords::Keyword;
 use crate::format::text::keywords::KEYWORDS_PHF;

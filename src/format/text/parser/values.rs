@@ -1,5 +1,4 @@
-
-use nom::{AsChar as NomAsChar, IResult};
+use nom::IResult;
 use nom::error::{ParseError, ErrorKind};
 use num::{Unsigned, Signed};
 use crate::format::text::lexer::{Token, LexerInput};
@@ -16,21 +15,6 @@ use num::FromPrimitive;
 
 use super::ParserError;
 
-
-#[cfg(test)]
-mod test {
-    use crate::format::input::{Input};
-    use crate::format::text::lexer::Token;
-
-    use super::*;
-    //use crate::format::text::parser::test::*;
-  
-    #[test]
-    fn test_string() {
-        string::<Input<Token<&str>>>(Input::from(&[Token::String("\"\"")][..])).unwrap();
-        string::<Input<Token<&str>>>(Input::from(&[Token::String("\"absdd\"")][..])).unwrap();
-    }
-}
 
 #[inline]
 pub fn string<'a, I: ParserInput<'a> + 'a>(token_i: I) -> IResult<I, String, I::Error>
@@ -102,103 +86,128 @@ pub fn fxx<'a, Out, I: ParserInput<'a> + 'a>(i: I) -> IResult<I, Out, I::Error>
     Ok((i, p))
 }
 
-// #[cfg(test)]
-// mod test {
-//
-//     use nom::error::{ErrorKind};
-//
-//
-//     use super::*;
-//
-//     type FastError<T> = (T, ErrorKind);
-//
-//     #[test]
-//     fn test_id() {
-//         assert_eq!(
-//             id::<&str, FastError<&str>>("$$f@0f!# a"),
-//             Ok((" a", "$f@0f!#"))
-//         );
-//         id::<&str, FastError<&str>>("0d@0f!# a").unwrap_err();
-//     }
-//
-//     #[test]
-//     fn test_string() {
-//         assert_eq!(
-//             string::<FastError<&str>>("\"Lorem ipsum dolor sit amet\""),
-//             Ok(("", "Lorem ipsum dolor sit amet".to_owned()))
-//         );
-//         string::<FastError<&str>>("\"Lorem").unwrap_err();
-//         assert_eq!(
-//             string::<FastError<&str>>(
-//                 "\"ASCII: \\42, TAB: \\t, CRLF: \\r\\n, Unicode: \\u{05d0}\""
-//             ),
-//             Ok(("", "ASCII: B, TAB: \t, CRLF: \r\n, Unicode: א".to_owned()))
-//         );
-//         string::<FastError<&str>>("\"\\uinvalid\"").unwrap_err();
-//         string::<FastError<&str>>("\"\\q\"").unwrap_err();
-//     }
-//
-//     #[test]
-//     fn test_unsigned_int() {
-//         assert_eq!(
-//             uxx::<&str, FastError<&str>, u64>("0xF"),
-//             Ok(("", 0xF_u64))
-//         );
-//         assert_eq!(
-//             uxx::<&str, FastError<&str>, u64>("0x012_3_456_789_ABCDEF"),
-//             Ok(("", 0x0123_4567_89AB_CDEF_u64))
-//         );
-//         assert_eq!(
-//             uxx::<&str, FastError<&str>, u32>("1234"),
-//             Ok(("", 1234_u32))
-//         );
-//         assert_eq!(
-//             uxx::<&str, FastError<&str>, u32>("000000_00_0_0000000000000000000"),
-//             Ok(("", 0_u32))
-//         );
-//         uxx::<&str, FastError<&str>, u64>("0x012_3_456_789_ABCDEFFFFFF").unwrap_err();
-//     }
-//
-//     #[test]
-//     fn test_signed_int() {
-//         sxx::<&str, FastError<&str>, i8>("0xFF").unwrap_err();
-//         assert_eq!(
-//             sxx::<&str, FastError<&str>, i8>("0x7F"),
-//             Ok(("", 127_i8))
-//         );
-//         assert_eq!(
-//             sxx::<&str, FastError<&str>, i8>("-0x8_0"),
-//             Ok(("", -128_i8))
-//         );
-//         assert_eq!(
-//             sxx::<&str, FastError<&str>, i8>("-00000_0000_0000000000123"),
-//             Ok(("", -123_i8))
-//         );
-//     }
-//
-//     #[test]
-//     fn test_int() {
-//         assert_eq!(ixx::<&str, FastError<&str>, u8>("0x7F"), Ok(("", 127_u8)));
-//         assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x8_0"), Ok(("", 128_u8)));
-//         assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x1"), Ok(("", 255_u8)));
-//         assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x0"), Ok(("", 0_u8)));
-//     }
-//
-//     #[test]
-//     fn test_float() {
-//         assert_eq!(float::<&str, FastError<&str>, f32>("inf"), Ok(("", f32::INFINITY)));
-//         assert_eq!(float::<&str, FastError<&str>, f64>("-inf"), Ok(("", f64::NEG_INFINITY)));
-//         assert_ne!(
-//             float::<&str, FastError<&str>, f32>("nan"),
-//             float::<&str, FastError<&str>, f32>("nan")
-//         );
-//         assert_eq!(float::<&str, FastError<&str>, f32>("0.1"), Ok(("", 1e-1f32)));
-//         assert_eq!(float::<&str, FastError<&str>, f32>("0.000000001"), Ok(("", 1e-9f32)));
-//         assert_eq!(float::<&str, FastError<&str>, f64>("-1000.000000001"), Ok(("", -1000.000000001f64)));
-//
-//         assert_eq!(float::<&str, FastError<&str>, f64>("0x0.0p1324125"), Ok(("", 0.0f64)));
-//         assert_eq!(float::<&str, FastError<&str>, f64>("-0x0"), Ok(("", -0.0f64)));
-//         // FIXME hex float parsing
-//         //assert_eq!(float::<&str, FastError<&str>, f64>("0x400.0p-10"), Ok(("", 1f64)));
-//     }
-// }
+#[cfg(test)]
+mod test {
+
+    use nom::error::{ErrorKind};
+
+    use crate::format::input::Input;
+    use super::*;
+
+    use crate::format::values::AsUnsigned;
+
+    type FastError<T> = (T, ErrorKind);
+
+    // #[test]
+    // fn test_id() {
+    //     {
+    //         let t = lex!("$$f@0f!#").unwrap();
+    //         assert_eq!(consumed!(id, Input::new(&t)), Ok("$f@0f!#"))
+    //     }
+
+    //     {
+    //         let t = lex!("0f!#").unwrap();
+    //         consumed!(id, Input::new(&t)).unwrap_err();
+    //     }
+    // }
+
+    #[test]
+    fn test_string() {
+        {
+            let t = lex!("\"Lorem ipsum dolor sit amet\"").unwrap();
+            assert_eq!(consumed!(string, Input::new(&t)), Ok("Lorem ipsum dolor sit amet".to_owned()));
+        }
+        {
+            
+            let t = lex!("\"ASCII: \\42, TAB: \\t, CRLF: \\r\\n, Unicode: \\u{05d0}\"").unwrap();
+            assert_eq!(consumed!(string, Input::new(&t)), Ok("ASCII: B, TAB: \t, CRLF: \r\n, Unicode: א".to_owned()));
+        }
+        {
+            
+            let t = lex!("\"Lorem").unwrap();
+            consumed!(string, Input::new(&t)).unwrap_err();
+        }
+        {
+            let t = lex!("\"\\uinvalid\"").unwrap();
+            consumed!(string, Input::new(&t)).unwrap_err();
+        }
+        {
+
+            let t = lex!("\"\\q\"").unwrap();
+            consumed!(string, Input::new(&t)).unwrap_err();
+        }
+    }
+
+    #[test]
+    fn test_unsigned_int() {
+        {
+            let t = lex!("0xF").unwrap();
+            assert_eq!(consumed!(uxx, Input::new(&t)), Ok(0xF_u64));
+        }
+
+        {
+            let t = lex!("0x012_3_456_789_ABCDEF").unwrap();
+            assert_eq!(consumed!(uxx, Input::new(&t)), Ok(0x0123_4567_89AB_CDEF_u64));
+        }
+        {
+            let t = lex!("1234").unwrap();
+            assert_eq!(consumed!(uxx, Input::new(&t)), Ok(1234_u32));
+        }
+
+        {
+            let t = lex!("000000_00_0_0000000000000000000").unwrap();
+            assert_eq!(consumed!(uxx, Input::new(&t)), Ok(0_u32));
+        }
+        {
+            
+            let t = lex!("0x012_3_456_789_ABCDEFFFFFF").unwrap();
+            consumed!(uxx::<u32, _>, Input::new(&t)).unwrap_err();
+        }
+    }
+
+    #[test]
+    fn test_signed_int() {
+        {
+            let t = lex!("0xFF").unwrap();
+            consumed!(ixx::<u8, _>, Input::new(&t)).unwrap_err();
+        }
+        {
+            let t = lex!("0x7F").unwrap();
+            assert_eq!(consumed!(ixx, Input::new(&t)), Ok(127_u8));
+        }
+        // {
+        //     let t = lex!("-0x8_0").unwrap();
+        //     assert_eq!(consumed!(ixx, Input::new(&t)), Ok(255_u8));
+        // }
+        // {
+        //     let t = lex!("-00000_0000_0000000000123").unwrap();
+        //     assert_eq!(consumed!(ixx, Input::new(&t)), Ok(250_u8));
+        // }
+    }
+
+    // #[test]
+    // fn test_int() {
+    //     assert_eq!(ixx::<&str, FastError<&str>, u8>("0x7F"), Ok(("", 127_u8)));
+    //     assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x8_0"), Ok(("", 128_u8)));
+    //     assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x1"), Ok(("", 255_u8)));
+    //     assert_eq!(ixx::<&str, FastError<&str>, u8>("-0x0"), Ok(("", 0_u8)));
+    // }
+
+    // #[test]
+    // fn test_float() {
+    //     assert_eq!(float::<&str, FastError<&str>, f32>("inf"), Ok(("", f32::INFINITY)));
+    //     assert_eq!(float::<&str, FastError<&str>, f64>("-inf"), Ok(("", f64::NEG_INFINITY)));
+    //     assert_ne!(
+    //         float::<&str, FastError<&str>, f32>("nan"),
+    //         float::<&str, FastError<&str>, f32>("nan")
+    //     );
+    //     assert_eq!(float::<&str, FastError<&str>, f32>("0.1"), Ok(("", 1e-1f32)));
+    //     assert_eq!(float::<&str, FastError<&str>, f32>("0.000000001"), Ok(("", 1e-9f32)));
+    //     assert_eq!(float::<&str, FastError<&str>, f64>("-1000.000000001"), Ok(("", -1000.000000001f64)));
+
+    //     assert_eq!(float::<&str, FastError<&str>, f64>("0x0.0p1324125"), Ok(("", 0.0f64)));
+    //     assert_eq!(float::<&str, FastError<&str>, f64>("-0x0"), Ok(("", -0.0f64)));
+    //     // FIXME hex float parsing
+    //     //assert_eq!(float::<&str, FastError<&str>, f64>("0x400.0p-10"), Ok(("", 1f64)));
+    // }
+}

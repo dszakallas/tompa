@@ -63,11 +63,6 @@ pub fn parsed_string<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, String, I::
     Ok((i, out))
 }
 
-// fn try_parse_integral<Out: num::Num>(&self, radix: u32) -> Result<Out, ()> {
-//     let str = self.try_convert_to_integral_string()?;
-//     <Out as num::Num>::from_str_radix(str.as_str(), radix).map_err(|_| ())
-// }
-
 fn try_convert_to_integral_string<'a, I: LexerInput<'a> + 'a>(n: NumParts<I>) -> Result<String, ()> {
     if n.e == None && n.q == None {
         return Ok(n.p.clone().into_iter().map(|i| i.as_str()).collect::<Vec<&str>>().join(""));

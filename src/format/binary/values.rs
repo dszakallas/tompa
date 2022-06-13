@@ -31,11 +31,8 @@ pub fn vec_of_byte<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Vec<u8>, I::
 pub fn byte<'a, I: 'a + BinaryInput<'a>>(b: u8) -> impl Fn(I) -> IResult<I, u8, I::Error> {
     move |i: I| {
         let (i, ib) = take(1u8)(i)?;
-        if let b = ib.as_bytes()[0] {
-            Ok((i, b))
-        } else {
-            Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::Tag)))
-        }
+        let b = ib.as_bytes()[0];
+        Ok((i, b))
     }
 }
 

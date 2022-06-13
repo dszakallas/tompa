@@ -3,7 +3,7 @@ use std::{error::Error, fmt::{self, Display, Formatter}, ops::{Range, RangeFrom,
 
 use nom::{AsBytes, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Slice};
 
-use super::{input::{WithParseError, WithWrappedInput}};
+use super::input::WithParseError;
 
 #[derive(Debug)]
 pub struct BinaryError;

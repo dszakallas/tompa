@@ -1,10 +1,10 @@
 use nom::{IResult, bytes::complete::{take, tag}, combinator::{opt, map_res, map}, multi::many0, eof, sequence::{tuple, preceded, pair, terminated}, branch::alt, error::{ParseError, ErrorKind}};
 
-use crate::{format::binary::{values::byte, types::{tabletype, memtype, globaltype}}, ast::{FuncType, Import, ExternFunc, ImportDesc, ExternTable, ExternMemType, ExternGlobalType, ExternTableType, TypeIdx, Table, Mem, Global, Export, ExportDesc, ExternMem, ExternGlobal, Start, Element, ExternFuncType, Instruction, ValType, LocalGet, MemIdx, Function}};
+use crate::{format::binary::{values::byte, types::{tabletype, memtype, globaltype}}, ast::{FuncType, Import, ExternFunc, ImportDesc, ExternTable, ExternMemType, ExternGlobalType, ExternTableType, TypeIdx, Table, Mem, Global, Export, ExportDesc, ExternMem, ExternGlobal, Start, Element, Instruction, ValType, Function, Module, Data}};
 
-use super::{BinaryInput, values::{uxx, vec_, name, vec_of_byte}, types::{functype, valtype}, instructions::{expr, self}};
+use super::{BinaryInput, values::{uxx, vec_, name, vec_of_byte}, types::{functype, valtype}, instructions::expr};
 
-use std::{str, iter::zip};
+use std::iter::{zip, repeat};
 
 pub fn section<'a, I: 'a + BinaryInput<'a>>(n: u8) -> impl Fn(I) -> IResult<I, Option<I>, I::Error> {
     move |i: I| {
@@ -105,10 +105,10 @@ fn export_section<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Vec<Export>, 
     Ok((i, mems)) 
 }
 
-fn start_section<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Start, I::Error> {
+fn start_section<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Option<Start>, I::Error> {
     let (i, start) = uxx::<u32, I>(i)?;
     let (i, _) = eof!(i.clone(),)?;
-    Ok((i, Start(start))) 
+    Ok((i, Some(Start(start))))
 }
 
 fn element<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Element, I::Error> {
@@ -155,11 +155,6 @@ fn code_section<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Vec<Code>, I::E
     Ok((i, code)) 
 }
 
-pub struct Data {
-    pub data: MemIdx,
-    pub offset: Vec<Instruction>,
-    pub init: Vec<u8>
-}
 
 fn data<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Data, I::Error> {
     let (i, data) = uxx::<u32, I>(i)?;
@@ -177,18 +172,18 @@ fn data_section<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Vec<Data>, I::E
 static MAGIC: [u8; 4] = [0x00, 0x61, 0x73, 0x6D];
 static VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
 
-pub fn module<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Error>
+pub fn module<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Module, I::Error>
 {
     let (i, _) = tag(MAGIC.as_slice())(i)?;
     let (i, _) = tag(VERSION.as_slice())(i)?;
     let (i, _) = many0(custom_section)(i)?;
-    let (i, tpe) = terminated(type_section, many0(custom_section))(i)?;
-    let (i, import) = terminated(import_section, many0(custom_section))(i)?;
+    let (i, types) = terminated(type_section, many0(custom_section))(i)?;
+    let (i, imports) = terminated(import_section, many0(custom_section))(i)?;
     let (i, function) = terminated(function_section, many0(custom_section))(i)?;
-    let (i, table) = terminated(table_section, many0(custom_section))(i)?;
-    let (i, memory) = terminated(mem_section, many0(custom_section))(i)?;
-    let (i, global) = terminated(global_section, many0(custom_section))(i)?;
-    let (i, export) = terminated(export_section, many0(custom_section))(i)?;
+    let (i, tables) = terminated(table_section, many0(custom_section))(i)?;
+    let (i, mems) = terminated(mem_section, many0(custom_section))(i)?;
+    let (i, globals) = terminated(global_section, many0(custom_section))(i)?;
+    let (i, exports) = terminated(export_section, many0(custom_section))(i)?;
     let (i, start) = terminated(start_section, many0(custom_section))(i)?;
     let (i, elem) = terminated(element_section, many0(custom_section))(i)?;
     let (i, code) = terminated(code_section, many0(custom_section))(i)?;
@@ -198,12 +193,25 @@ pub fn module<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Erro
         return Err(nom::Err::Error(ParseError::from_error_kind(i, ErrorKind::MapRes)))
     }
 
-    // let funcs = zip(function, code)
-    //     .map(|(f, c)| Function {
-    //         type_idx: f,
-    //         locals: c.func.locals.into_iter().flatten().collect(),
-    //         body: c.func.expr
-    //     });
+    let funcs: Vec<Function> = zip(function, code)
+        .map(|(f, c)| Function {
+            type_idx: f,
+            locals: c.func.locals.into_iter().map(|l| repeat(l.t).take(l.n as usize)).flatten().collect(),
+            body: c.func.expr
+        })
+        .collect();
 
-    todo!()
+    let module = Module {
+        types,
+        funcs,
+        tables,
+        mems,
+        globals,
+        elem,
+        data,
+        start,
+        imports,
+        exports,
+    };
+    Ok((i, module))
 }

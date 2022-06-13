@@ -1,6 +1,4 @@
-use nom::{AsBytes, IResult, bytes::complete::{tag, take}, combinator::map, error::{ErrorKind, ParseError}, sequence::pair};
-
-use nom::multi::many0;
+use nom::{IResult, bytes::complete::take, combinator::map, error::{ErrorKind, ParseError}, sequence::pair};
 
 use crate::{ast::{FuncRef, FuncType, GlobalType, Limits, MemType, Mut, ResultType, TableType, ValType}, format::binary::values::{byte, uxx, vec_}};
 

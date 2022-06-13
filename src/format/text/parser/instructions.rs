@@ -156,31 +156,6 @@ pub fn instr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) 
     }
 }
 
-/*
-#[inline]
-pub fn instr_seq<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Vec<Instruction>, I::Error> + 'b
-    where I::Inner: LexerInput<'a>,
-{
-    move |i: I| {
-        let mut acc = Vec::with_capacity(4);
-        let mut i = i.clone();
-        loop
-            match f(i.clone()) {
-                Err(Err::Error(_)) => return Ok((i, acc)),
-                Err(e) => return Err(e),
-                Ok((i1, o)) => {
-                    if i1 == i {
-                        return Err(Err::Error(E::from_error_kind(i, ErrorKind::Many0)));
-                    }
-
-                    i = i1;
-                    acc.push(o);
-                }
-            }
-        }
-    }
-}
-*/
 
 #[inline]
 fn label<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, IdCtx, I::Error> + 'b
@@ -349,15 +324,6 @@ mod test {
 
     type FastError<T> = (T, ErrorKind);
 
-    // #[test]
-    // fn test_label() {
-    //     {
-    //         let (i, inner_ctx) = label::<&str, FastError<&str>>(Default::default())("$id").unwrap();
-    //         assert_eq!(i, "");
-    //         assert_eq!(inner_ctx.labels, im_rc::vector![Some("id".to_owned())])
-    //     }
-    // }
-
     #[test]
     fn test_block() {
         {
@@ -460,30 +426,72 @@ mod test {
         }
     }
 
+    #[test]
+    fn test_memory() {
+        {
+            let t = lex!("i32.load").unwrap();
+            let res = Instruction::I32Load(I32Load {
+                memarg: Memarg {offset: 0, align: 4}
+            });
+            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+        }
+        {
+            let t = lex!("f64.store").unwrap();
+            let res = Instruction::F64Store(F64Store {
+                memarg: Memarg {offset: 0, align: 8}
+            });
+            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+        }
+        {
+            let t = lex!("i64.load16_u").unwrap();
+            let res = Instruction::I64Load16U(I64Load16U {
+                memarg: Memarg {offset: 0, align: 2}
+            });
+            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+        }
+        {
+            let t = lex!("i64.load32_u offset=1").unwrap();
+            let res = Instruction::I64Load32U(I64Load32U {
+                memarg: Memarg {offset: 1, align: 4}
+            });
+            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+        }
+        {
+            let t = lex!("i32.load8_u offset=1 align=4").unwrap();
+            let res = Instruction::I32Load8U(I32Load8U {
+                memarg: Memarg {offset: 1, align: 4}
+            });
+            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+        }
+        {
+            let t = lex!("i32.load8_s offset=1 align=3").unwrap();
+            consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+        }
 
-    // #[test]
-    // fn test_mem_arg() {
-    //     assert_eq!(
-    //         memarg::<'static, &str, FastError<&str>>(1)(""),
-    //         Ok(("", Memarg { offset: 0, align: 1 }))
-    //     );
+        {
+            let t = lex!("memory.size").unwrap();
+            let res = Instruction::MemorySize(MemorySize {});
+            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+        }
+    }
 
-    //     assert_eq!(
-    //         memarg::<'static, &str, FastError<&str>>(2)("offset=4"),
-    //         Ok(("", Memarg { offset: 4, align: 2 }))
-    //     );
 
-    //     assert_eq!(
-    //         memarg::<'static, &str, FastError<&str>>(2)("align=16"),
-    //         Ok(("", Memarg { offset: 0, align: 4 }))
-    //     );
+    #[test]
+    fn test_num() {
+        {
+            let t = lex!("i32.rotr").unwrap();
+            assert_eq!(
+                consumed!(instr(&Default::default()), Input::new(&t)),
+                Ok(Instruction::I32Rotr(I32Rotr {}))
+            );
+        }
 
-    //     assert_eq!(
-    //         memarg::<'static, &str, FastError<&str>>(2)("offset=8 align=64"),
-    //         Ok(("", Memarg { offset: 8, align: 6 }))
-    //     );
-
-    //     memarg::<'static, &str, FastError<&str>>(2)("offset=-8").unwrap_err();
-    //     memarg::<'static, &str, FastError<&str>>(2)("align=111115235").unwrap_err();
-    // }
+        {
+            let t = lex!("i64.const 0xff43").unwrap();
+            assert_eq!(
+                consumed!(instr(&Default::default()), Input::new(&t)),
+                Ok(Instruction::I64Const(I64Const { param: 65347 }))
+            );
+        }
+    }
 }
