@@ -1,11 +1,11 @@
 use nom::{IResult, bytes::complete::take, combinator::{map, map_res}, error::{ErrorKind, ParseError}, multi::many_m_n};
 use num::Float;
 use crate::format::values::{AsUnsigned, FromBytes};
-use super::BinaryInput;
+use super::ByteStream;
 use std::{mem::size_of, ops::{BitOrAssign, Shl}};
 use std::str;
 
-pub fn name<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, String, I::Error> {
+pub fn name<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, String, I::Error> {
     let (i, n) = uxx::<u32, I>(i)?;
     map_res(
         take(n),
@@ -13,7 +13,7 @@ pub fn name<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, String, I::Error> {
     )(i)
 }
 
-pub fn vec_<'a, Out, F, I: 'a + BinaryInput<'a>>(f: F) -> impl FnOnce(I) -> IResult<I, Vec<Out>, I::Error> where
+pub fn vec_<'a, Out, F, I: 'a + ByteStream<'a>>(f: F) -> impl FnOnce(I) -> IResult<I, Vec<Out>, I::Error> where
 F: Fn(I) -> IResult<I, Out, I::Error>
 {
     |i: I| {
@@ -22,13 +22,13 @@ F: Fn(I) -> IResult<I, Out, I::Error>
     }
 }
 
-pub fn vec_of_byte<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Vec<u8>, I::Error> {
+pub fn vec_of_byte<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Vec<u8>, I::Error> {
     let (i, n) = uxx::<u32, I>(i)?;
     map(take(n), |i: I| i.as_bytes().to_vec())(i)
 }
 
 #[inline]
-pub fn byte<'a, I: 'a + BinaryInput<'a>>(b: u8) -> impl Fn(I) -> IResult<I, u8, I::Error> {
+pub fn byte<'a, I: 'a + ByteStream<'a>>(b: u8) -> impl Fn(I) -> IResult<I, u8, I::Error> {
     move |i: I| {
         let (i, ib) = take(1u8)(i)?;
         let b = ib.as_bytes()[0];
@@ -36,7 +36,7 @@ pub fn byte<'a, I: 'a + BinaryInput<'a>>(b: u8) -> impl Fn(I) -> IResult<I, u8, 
     }
 }
 
-pub fn uxx<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Error>
+pub fn uxx<'a, Out, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Out, I::Error>
     where
     Out: num::Unsigned + BitOrAssign + Shl<usize, Output = Out> + From<u8>
 {
@@ -64,7 +64,7 @@ pub fn uxx<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Error>
 }
 
 
-pub fn sxx<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Error>
+pub fn sxx<'a, Out, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Out, I::Error>
 where
     Out: num::Signed + BitOrAssign + Shl<usize, Output=Out> + From<u8>
 {
@@ -95,7 +95,7 @@ where
     Ok((prev_i, result))
 }
 
-pub fn ixx<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Error>
+pub fn ixx<'a, Out, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Out, I::Error>
 where
     Out: num::Unsigned + AsUnsigned,
 <Out as AsUnsigned>::Repr: num::Signed + From<u8> + Shl<usize, Output=<Out as AsUnsigned>::Repr> + BitOrAssign
@@ -103,7 +103,7 @@ where
     map(sxx, |n: <Out as AsUnsigned>::Repr| <Out as AsUnsigned>::get(n))(i)
 }
 
-pub fn fxx<'a, Out, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Out, I::Error> where
+pub fn fxx<'a, Out, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Out, I::Error> where
     Out: Float + FromBytes {
     let (i, bytes) = take(<Out as FromBytes>::N)(i)?;
     let res = Out::from_le_bytes(bytes.as_bytes());

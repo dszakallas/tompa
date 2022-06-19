@@ -4,11 +4,11 @@ use nom::multi::many0;
 use nom::sequence::{preceded, terminated};
 use nom::{IResult, bytes::complete::take};
 
-use super::BinaryInput;
+use super::ByteStream;
 use super::types::resulttype;
 use super::values::byte;
 use crate::ast::{Block, If, Instruction, Loop, Memarg, ResultType, LocalIdx, GlobalIdx};
-use crate::format::binary::values::{uxx, vec_, ixx, fxx};
+use crate::format::binary::values::{uxx, ixx, fxx};
 
 use phf::phf_map;
 
@@ -221,21 +221,21 @@ macro_rules! def_instruction_bin_parser_phf {
 
 def_instruction_bin_cps!(def_instruction_bin_parser_phf());
 
-fn block<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Block, I::Error> {
+fn block<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Block, I::Error> {
     let (i, rt) = resulttype(i)?;
     let (i, instrs) = many0(instr)(i)?;
     let (i, _) = byte(0x0B)(i)?;
     Ok((i, Block { result: rt, instrs }))
 }
 
-fn loop_<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Loop, I::Error> {
+fn loop_<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Loop, I::Error> {
     let (i, rt) = resulttype(i)?;
     let (i, instrs) = many0(instr)(i)?;
     let (i, _) = byte(0x0B)(i)?;
     Ok((i, Loop { result: rt, instrs }))
 }
 
-fn if_<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, If, I::Error> {
+fn if_<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, If, I::Error> {
     let (i, rt) = resulttype(i)?;
     let (i, if_instrs) = many0(instr)(i)?;
     let (i, else_instrs) = map(opt(preceded(byte(0x05), many0(instr))), |e| e.unwrap_or_default())(i)?;
@@ -243,18 +243,18 @@ fn if_<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, If, I::Error> {
     Ok((i, If { result: rt, if_instrs, else_instrs }))
 }
 
-fn memarg<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Memarg, I::Error> {
+fn memarg<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Memarg, I::Error> {
     let (i, align) = uxx::<u32, I>(i)?;
     let (i, offset) = uxx::<u32, I>(i)?;
     Ok((i, Memarg { offset, align }))
 } 
 
-fn memgrow<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, (), I::Error> {
+fn memgrow<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, (), I::Error> {
     let (i, _) = byte(0x00)(i)?;
     Ok((i, ()))
 } 
 
-pub fn instr<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Instruction, I::Error> {
+pub fn instr<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Instruction, I::Error> {
     let (i, ib) = take(1u8)(i)?;
     let b = ib.as_bytes()[0];
     match INSTR_PARSERS.get(&b) {
@@ -274,6 +274,6 @@ pub fn instr<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Instruction, I::Er
     }
 }
 
-pub fn expr<'a, I: 'a + BinaryInput<'a>>(i: I) -> IResult<I, Vec<Instruction>, I::Error> {
+pub fn expr<'a, I: 'a + ByteStream<'a>>(i: I) -> IResult<I, Vec<Instruction>, I::Error> {
     terminated(many0(instr), byte(0x0B))(i)
 }

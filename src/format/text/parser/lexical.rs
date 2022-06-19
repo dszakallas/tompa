@@ -12,7 +12,7 @@ use num::FromPrimitive;
 use lexical_core::Integer;
 use crate::format::text::lexer::{AsChar, NumVariant, hex_num, NumParts, dec_num, hex_num_digits};
 
-use crate::format::text::lexer::LexerInput;
+use crate::format::text::lexer::CharStream;
 use crate::format::text::lexer::Num;
 use crate::format::values::AsUnsigned;
 use std::iter::FromIterator;
@@ -21,7 +21,7 @@ use num::Float;
 use std::convert::TryFrom;
 
 #[inline]
-pub fn parsed_string<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, String, I::Error> {
+pub fn parsed_string<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, String, I::Error> {
     let (mut i, _) = char('\"')(i)?;
     let mut out = String::new();
     loop {
@@ -63,7 +63,7 @@ pub fn parsed_string<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, String, I::
     Ok((i, out))
 }
 
-fn try_convert_to_integral_string<'a, I: LexerInput<'a> + 'a>(n: NumParts<I>) -> Result<String, ()> {
+fn try_convert_to_integral_string<'a, I: CharStream<'a> + 'a>(n: NumParts<I>) -> Result<String, ()> {
     if n.e == None && n.q == None {
         return Ok(n.p.clone().into_iter().map(|i| i.as_str()).collect::<Vec<&str>>().join(""));
     }
@@ -71,12 +71,12 @@ fn try_convert_to_integral_string<'a, I: LexerInput<'a> + 'a>(n: NumParts<I>) ->
 }
 
 #[inline]
-fn sign<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Option<char>, I::Error> {
+fn sign<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Option<char>, I::Error> {
     opt(alt((char('+'), char('-'))))(i)
 }
 
 #[inline]
-fn uxx_as_lit_string<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, (String, u32), I::Error> {
+fn uxx_as_lit_string<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, (String, u32), I::Error> {
     map_res(
         alt((map(hex_num, |n| (n, 16)), map(dec_num, |n| (n, 10)))),
         |(n, radix)| -> Result<(String, u32), ()> { Ok((try_convert_to_integral_string(n)?, radix)) }
@@ -84,12 +84,12 @@ fn uxx_as_lit_string<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, (String, u3
 }
 
 #[inline]
-pub fn parsed_uxx<'a, Out: num::Unsigned, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Out, I::Error> {
+pub fn parsed_uxx<'a, Out: num::Unsigned, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Out, I::Error> {
     map_res(uxx_as_lit_string, |(str, n)| <Out as num::Num>::from_str_radix(&str, n))(i)
 }
 
 #[inline]
-pub fn parsed_sxx<'a, Out: num::Signed, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Out, I::Error> {
+pub fn parsed_sxx<'a, Out: num::Signed, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Out, I::Error> {
     map_res(pair(sign, uxx_as_lit_string), |(opt_s, (str, n))| {
         let mut signed_str = String::from_iter(opt_s.into_iter());
         signed_str.push_str(&str);
@@ -98,17 +98,17 @@ pub fn parsed_sxx<'a, Out: num::Signed, I: 'a + LexerInput<'a>>(i: I) -> IResult
 }
 
 #[inline]
-pub fn parsed_ixx<'a, Out: num::Unsigned + AsUnsigned, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Out, I::Error> {
+pub fn parsed_ixx<'a, Out: num::Unsigned + AsUnsigned, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Out, I::Error> {
     let (i, sign) = peek(sign)(i)?;
 
     match sign {
-        Some(sign) => map(parsed_sxx::<<Out as AsUnsigned>::Repr, I>, |n| AsUnsigned::get(n))(i),
+        Some(_) => map(parsed_sxx::<<Out as AsUnsigned>::Repr, I>, |n| AsUnsigned::get(n))(i),
         None => parsed_uxx::<Out, I>(i),
     }
 }
 
 #[inline]
-pub fn parsed_fxx<'a, Out, I: 'a + LexerInput<'a>>(preparsed: &'a Num<I>) -> Result<Out, ()>
+pub fn parsed_fxx<'a, Out, I: 'a + CharStream<'a>>(preparsed: &'a Num<I>) -> Result<Out, ()>
     where
         Out: Float + LcFloat + FromLexical,
         <Out as LcFloat>::Unsigned: FromPrimitive,
@@ -130,7 +130,7 @@ pub fn parsed_fxx<'a, Out, I: 'a + LexerInput<'a>>(preparsed: &'a Num<I>) -> Res
 }
 
 #[inline]
-fn try_parse_dec_float_num<'a, Out: FromLexical, I: LexerInput<'a> + 'a>(s: &Option<char>, preparsed: &NumParts<I>) -> Result<Out, ()> {
+fn try_parse_dec_float_num<'a, Out: FromLexical, I: CharStream<'a> + 'a>(s: &Option<char>, preparsed: &NumParts<I>) -> Result<Out, lexical_core::Error> {
     let mut lex_compat_format = String::from_iter(s.iter());
 
     for p_ in preparsed.p.iter() {
@@ -154,7 +154,7 @@ fn try_parse_dec_float_num<'a, Out: FromLexical, I: LexerInput<'a> + 'a>(s: &Opt
         }
     }
 
-    <Out as FromLexical>::from_lexical_radix(lex_compat_format.as_bytes(), 10).map_err(|e| ())
+    <Out as FromLexical>::from_lexical_radix(lex_compat_format.as_bytes(), 10)
 }
 
 type Uxx<Out> = <Out as LcFloat>::Unsigned;
@@ -190,7 +190,7 @@ fn shift_and_round_to_nearest<Out: LcFloat>(
 }
 
 #[inline]
-fn try_parse_hex_float_num<'a, Out: LcFloat, I: LexerInput<'a> + 'a>(s: &Option<char>, preparsed: &NumParts<I>) -> Result<Out, ()>
+fn try_parse_hex_float_num<'a, Out: LcFloat, I: CharStream<'a> + 'a>(s: &Option<char>, preparsed: &NumParts<I>) -> Result<Out, ()>
     where <Out as LcFloat>::Unsigned: FromPrimitive,
 {
     let is_neg = s.map_or(false, |s| s == '-');

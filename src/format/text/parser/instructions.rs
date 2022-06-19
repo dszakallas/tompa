@@ -9,11 +9,11 @@ use crate::ast::*;
 
 use crate::format::text::instructions::{INSTR_PARSERS, InstrParseType};
 
-use crate::format::text::parser::{id, keyword, WithWrappedInput, anykeyword, par, parc};
-use crate::format::text::parser::ParserInput;
+use crate::format::text::parser::{id, tag, WithWrappedStream, anykeyword, par, parc};
+use crate::format::text::parser::TokenStream;
 use crate::format::text::parser::IdCtx;
 
-use crate::format::text::lexer::LexerInput;
+use crate::format::text::lexer::CharStream;
 
 use crate::format::text::keywords::Keyword;
 
@@ -36,44 +36,44 @@ use crate::format::text::parser::values::uxx;
 use crate::ast::{FuncIdx, GlobalIdx, Instruction, LabelIdx, LocalIdx, Memarg, ResultType, TypeIdx};
 
 #[inline]
-fn block<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Block, I::Error> + 'b
+fn block<'a, 'b, I: TokenStream<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Block, I::Error> + 'b
     where
-        I::Inner: LexerInput<'a>,
+        I::Inner: CharStream<'a>,
 {
     move |i: I| {
         let (i, inner_ctx) = label(ctx)(i)?;
         let (i, result) = resulttype(i)?;
         let (i, instrs) = many0(instr(&inner_ctx))(i)?;
-        let (i, _) = keyword(Keyword::End)(i)?;
+        let (i, _) = tag(Keyword::End)(i)?;
         let (i, _) = id_checker(&inner_ctx)(i)?;
         Ok((i, Block { result, instrs }))
     }
 }
 
 #[inline]
-fn loop_<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Loop, I::Error> + 'b
+fn loop_<'a, 'b, I: TokenStream<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Loop, I::Error> + 'b
     where
-        I::Inner: LexerInput<'a>,
+        I::Inner: CharStream<'a>,
 {
     move |i: I| {
         let (i, inner_ctx) = label(ctx)(i)?;
         let (i, result) = resulttype(i)?;
         let (i, instrs) = many0(instr(&inner_ctx))(i)?;
-        let (i, _) = keyword(Keyword::End)(i)?;
+        let (i, _) = tag(Keyword::End)(i)?;
         let (i, _) = id_checker(&inner_ctx)(i)?;
         Ok((i, Loop { result, instrs }))
     }
 }
 
 #[inline]
-fn if_<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, If, I::Error> + 'b
+fn if_<'a, 'b, I: TokenStream<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, If, I::Error> + 'b
     where
-        I::Inner: LexerInput<'a>, {
+        I::Inner: CharStream<'a>, {
     move |i: I| {
         let (i, inner_ctx) = label(ctx)(i)?;
         let (i, result) = resulttype(i)?;
         let (i, if_instrs) = many0(instr(&inner_ctx))(i)?;
-        let (i, else_) = opt(keyword(Keyword::Else))(i)?;
+        let (i, else_) = opt(tag(Keyword::Else))(i)?;
         let (i, else_instrs) = if let Some(_) = else_ {
             let (i, _) = id_checker(&inner_ctx)(i)?;
             let (i, else_instrs) = many0(instr(&inner_ctx))(i)?;
@@ -81,7 +81,7 @@ fn if_<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult
         } else {
             (i, vec![])
         };
-        let (i, _) = keyword(Keyword::End)(i)?;
+        let (i, _) = tag(Keyword::End)(i)?;
         let (i, _) = id_checker(&inner_ctx)(i)?;
         Ok((i, If { result, if_instrs, else_instrs }))
     }
@@ -92,8 +92,8 @@ macro_rules! def_idx_parsers {
     ($($name:ident -> $table_name:ident),*) => {
         $(
             #[inline]
-            fn $name<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, u32, I::Error> + 'b
-                where I::Inner: LexerInput<'a>,
+            fn $name<'b, 'a: 'b, I: TokenStream<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, u32, I::Error> + 'b
+                where I::Inner: CharStream<'a>,
             {
                 move |i: I| {
                     alt((
@@ -118,8 +118,8 @@ def_idx_parsers! {
 }
 
 #[inline]
-pub fn instr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Instruction, I::Error> + 'b
-    where I::Inner: LexerInput<'a>,
+pub fn instr<'b, 'a: 'b, I: TokenStream<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, Instruction, I::Error> + 'b
+    where I::Inner: CharStream<'a>,
 {
     move |i: I| {
         // FIXME we might need to handle terminal folded instructions here
@@ -158,8 +158,8 @@ pub fn instr<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) 
 
 
 #[inline]
-fn label<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, IdCtx, I::Error> + 'b
-    where I::Inner: LexerInput<'a>,
+fn label<'a, 'b, I: TokenStream<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, IdCtx, I::Error> + 'b
+    where I::Inner: CharStream<'a>,
 {
     move |input: I| {
         let _i = input.clone();
@@ -183,8 +183,8 @@ fn label<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResu
 }
 
 #[inline]
-fn id_checker<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, (), I::Error> + 'b
-    where I::Inner: LexerInput<'a>,
+fn id_checker<'a, 'b, I: TokenStream<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, (), I::Error> + 'b
+    where I::Inner: CharStream<'a>,
 {
     move |i: I| {
         map_res(
@@ -206,14 +206,14 @@ fn id_checker<'a, 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> 
 }
 
 #[inline]
-fn memarg<'a, I: ParserInput<'a> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, Memarg, I::Error> + 'a
-    where I::Inner: LexerInput<'a>,
+fn memarg<'a, I: TokenStream<'a> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, Memarg, I::Error> + 'a
+    where I::Inner: CharStream<'a>,
 {
-    type Inner<I> = <I as WithWrappedInput>::Inner;
+    type Inner<I> = <I as WithWrappedStream>::Inner;
     move |input: I| {
         let (i, (offset, align)) = pair(
             map_res(
-                opt(keyword::<I>(Keyword::OffsetEqU32)),
+                opt(tag::<I>(Keyword::OffsetEqU32)),
                 |opt_o: Option<&I::Inner>| -> StdResult<u32, ParserError> {
                     if let Some(kw) = opt_o {
                         let o_i = kw.slice(7..);
@@ -226,7 +226,7 @@ fn memarg<'a, I: ParserInput<'a> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, Memar
                 },
             ),
             map_res(
-                opt(keyword::<I>(Keyword::AlignEqU32)),
+                opt(tag::<I>(Keyword::AlignEqU32)),
                 |opt_a: Option<&I::Inner>| -> StdResult<u32, ParserError> {
                     if let Some(kw) = opt_a {
                         let a_i = kw.slice(6..);
@@ -251,12 +251,12 @@ fn memarg<'a, I: ParserInput<'a> + 'a>(n: u32) -> impl Fn(I) -> IResult<I, Memar
 }
 
 #[inline]
-fn typeuse<'b, 'a: 'b, I: ParserInput<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, (TypeIdx, Vec<Option<String>>), I::Error> + 'b
-    where I::Inner: LexerInput<'a>,
+fn typeuse<'b, 'a: 'b, I: TokenStream<'a> + 'a>(ctx: &'b IdCtx) -> impl Fn(I) -> IResult<I, (TypeIdx, Vec<Option<String>>), I::Error> + 'b
+    where I::Inner: CharStream<'a>,
 {
     move |i: I| {
         let (i, (type_idx, inline)) = parc(preceded(
-            keyword(Keyword::Type), tuple((
+            tag(Keyword::Type), tuple((
                 typeidx::<I>(ctx),
                 alt((
                     // we should attempt inline parsing when only the result is given
@@ -318,7 +318,7 @@ mod test {
     use nom::error::{ErrorKind};
 
 
-    use crate::format::input::Input;
+    use crate::format::input::Stream;
 
     use super::*;
 
@@ -330,26 +330,26 @@ mod test {
             let res = Instruction::Block(Block{ result: ResultType { valtype: Some(ValType::F32) }, instrs: vec![]});
             {
                 let t = lex!("block (result f32) end").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
             {
                 let t = lex!("block $a (result f32) end $a").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
             {
                 let t = lex!("block $a (result f32) end $b").unwrap();
-                consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+                consumed!(instr(&Default::default()), Stream::new(&t)).unwrap_err();
             }
             {
                 let t = lex!("block $a (result f32) end").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
         }
         {
             let res = Instruction::Block(Block{ result: ResultType { valtype: None }, instrs: vec![]});
             {
                 let t = lex!("block $a end $a").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
         }
     }
@@ -360,26 +360,26 @@ mod test {
             let res = Instruction::Loop(Loop{ result: ResultType { valtype: Some(ValType::F32) }, instrs: vec![]});
             {
                 let t = lex!("loop (result f32) end").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
             {
                 let t = lex!("loop $a (result f32) end $a").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
             {
                 let t = lex!("loop $a (result f32) end $b").unwrap();
-                consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+                consumed!(instr(&Default::default()), Stream::new(&t)).unwrap_err();
             }
             {
                 let t = lex!("loop $a (result f32) end").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
         }
         {
             let res = Instruction::Loop(Loop{ result: ResultType { valtype: None }, instrs: vec![]});
             {
                 let t = lex!("loop $a end $a").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
         }
     }
@@ -390,38 +390,38 @@ mod test {
             let res = Instruction::If(If{ result: ResultType { valtype: Some(ValType::F32) }, if_instrs: vec![], else_instrs: vec![] });
             {
                 let t = lex!("if (result f32) end").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
             {
                 let t = lex!("if $a (result f32) end $a").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
             {
                 let t = lex!("if $a (result f32) end $b").unwrap();
-                consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+                consumed!(instr(&Default::default()), Stream::new(&t)).unwrap_err();
             }
             {
                 let t = lex!("if $a (result f32) end").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
             {
                 let t = lex!("if $a (result f32) else $a end $a").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
             {
                 let t = lex!("if $a (result f32) else $b end $a").unwrap();
-                consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+                consumed!(instr(&Default::default()), Stream::new(&t)).unwrap_err();
             }
             {
                 let t = lex!("if $a (result f32) else end $a").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
         }
         {
             let res = Instruction::If(If{ result: ResultType { valtype: None }, if_instrs: vec![], else_instrs: vec![]});
             {
                 let t = lex!("if $a end $a").unwrap();
-                assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+                assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
             }
         }
     }
@@ -433,45 +433,45 @@ mod test {
             let res = Instruction::I32Load(I32Load {
                 memarg: Memarg {offset: 0, align: 4}
             });
-            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
         }
         {
             let t = lex!("f64.store").unwrap();
             let res = Instruction::F64Store(F64Store {
                 memarg: Memarg {offset: 0, align: 8}
             });
-            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
         }
         {
             let t = lex!("i64.load16_u").unwrap();
             let res = Instruction::I64Load16U(I64Load16U {
                 memarg: Memarg {offset: 0, align: 2}
             });
-            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
         }
         {
             let t = lex!("i64.load32_u offset=1").unwrap();
             let res = Instruction::I64Load32U(I64Load32U {
                 memarg: Memarg {offset: 1, align: 4}
             });
-            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
         }
         {
             let t = lex!("i32.load8_u offset=1 align=4").unwrap();
             let res = Instruction::I32Load8U(I32Load8U {
                 memarg: Memarg {offset: 1, align: 4}
             });
-            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
         }
         {
             let t = lex!("i32.load8_s offset=1 align=3").unwrap();
-            consumed!(instr(&Default::default()), Input::new(&t)).unwrap_err();
+            consumed!(instr(&Default::default()), Stream::new(&t)).unwrap_err();
         }
 
         {
             let t = lex!("memory.size").unwrap();
             let res = Instruction::MemorySize(MemorySize {});
-            assert_eq!(consumed!(instr(&Default::default()), Input::new(&t)), Ok(res.clone()));
+            assert_eq!(consumed!(instr(&Default::default()), Stream::new(&t)), Ok(res.clone()));
         }
     }
 
@@ -481,7 +481,7 @@ mod test {
         {
             let t = lex!("i32.rotr").unwrap();
             assert_eq!(
-                consumed!(instr(&Default::default()), Input::new(&t)),
+                consumed!(instr(&Default::default()), Stream::new(&t)),
                 Ok(Instruction::I32Rotr(I32Rotr {}))
             );
         }
@@ -489,7 +489,7 @@ mod test {
         {
             let t = lex!("i64.const 0xff43").unwrap();
             assert_eq!(
-                consumed!(instr(&Default::default()), Input::new(&t)),
+                consumed!(instr(&Default::default()), Stream::new(&t)),
                 Ok(Instruction::I64Const(I64Const { param: 65347 }))
             );
         }

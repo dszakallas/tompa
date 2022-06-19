@@ -2,11 +2,11 @@ use nom::{IResult, bytes::complete::take, combinator::map, error::{ErrorKind, Pa
 
 use crate::{ast::{FuncRef, FuncType, GlobalType, Limits, MemType, Mut, ResultType, TableType, ValType}, format::binary::values::{byte, uxx, vec_}};
 
-use super::BinaryInput;
+use super::ByteStream;
 
 
 #[inline]
-pub fn valtype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, ValType, I::Error>
+pub fn valtype<'a, I: ByteStream<'a> + 'a>(i: I) -> IResult<I, ValType, I::Error>
 {
     let (i, bi) = take(1u8)(i)?;
     let b = bi.as_bytes()[0];
@@ -22,7 +22,7 @@ pub fn valtype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, ValType, I::Erro
 
 
 #[inline]
-pub fn resulttype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, ResultType, I::Error>
+pub fn resulttype<'a, I: ByteStream<'a> + 'a>(i: I) -> IResult<I, ResultType, I::Error>
 {
     let (i, bi) = take(1u8)(i)?;
     let b = bi.as_bytes()[0];
@@ -38,7 +38,7 @@ pub fn resulttype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, ResultType, I
 }
 
 #[inline]
-pub fn functype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, FuncType, I::Error>
+pub fn functype<'a, I: ByteStream<'a> + 'a>(i: I) -> IResult<I, FuncType, I::Error>
 {
     let (i, bi) = take(1u8)(i)?;
     let b = bi.as_bytes()[0];
@@ -52,7 +52,7 @@ pub fn functype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, FuncType, I::Er
 }
 
 #[inline]
-pub fn limits<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, Limits, I::Error>
+pub fn limits<'a, I: ByteStream<'a> + 'a>(i: I) -> IResult<I, Limits, I::Error>
 {
     let (i, bi) = take(1u8)(i)?;
     let b = bi.as_bytes()[0];
@@ -72,14 +72,14 @@ pub fn limits<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, Limits, I::Error>
 }
 
 #[inline]
-pub fn memtype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, MemType, I::Error>
+pub fn memtype<'a, I: ByteStream<'a> + 'a>(i: I) -> IResult<I, MemType, I::Error>
 {
     map(limits, |limits| MemType { limits: limits })(i)
 }
 
 
 #[inline]
-pub fn tabletype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, TableType, I::Error>
+pub fn tabletype<'a, I: ByteStream<'a> + 'a>(i: I) -> IResult<I, TableType, I::Error>
 {
     let (i, _) = byte(0x70)(i)?;
     let (i, l) = limits(i)?;
@@ -88,7 +88,7 @@ pub fn tabletype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, TableType, I::
 
 
 #[inline]
-pub fn globaltype<'a, I: BinaryInput<'a> + 'a>(i: I) -> IResult<I, GlobalType, I::Error>
+pub fn globaltype<'a, I: ByteStream<'a> + 'a>(i: I) -> IResult<I, GlobalType, I::Error>
 {
     let (i, (vt, mut_)) = pair(valtype, |i: I| {
         let (i, bi) = take(1u8)(i)?;

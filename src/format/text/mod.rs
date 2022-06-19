@@ -1,13 +1,29 @@
+#![macro_use]
+
+macro_rules! token_type {
+    ($i:expr, $case: ident ($out:pat $(, $rest: pat)*)) => {{
+        use crate::format::text::lexer::Token;
+        if let Some(t) = $i.iter_elements().next() {
+            if let Token::$case($out, ) = t {
+                Some(($i.slice(1..), $out))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }}
+}
+
 #[macro_use]
 #[cfg(test)]
 mod test {
-    use nom::error::ErrorKind;
+    use crate::format::input::{ParseError, WithParseError};
+    use crate::format::text::error::{VerboseError};
+    use nom::error::{ErrorKind as NomErrorKind, VerboseError as NomVerboseError};
 
-    use crate::format::input::WithParseError;
-
-    
-    impl<'a> WithParseError for &'a str {
-        type Error = (&'a str, ErrorKind);
+    impl<'a> WithParseError<NomErrorKind> for &'a str {
+        type Error = NomVerboseError<&'a str>;
     }
 
     macro_rules! consumed {
@@ -17,6 +33,7 @@ mod test {
     }
 }
 
+mod error;
 mod instructions;
 mod keywords;
 mod lexer;

@@ -2,6 +2,7 @@
 use std::{error::Error, fmt::{self, Display, Formatter}, ops::{Range, RangeFrom, RangeTo}};
 
 use nom::{AsBytes, Compare, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Slice};
+use nom::error::ErrorKind;
 
 use super::input::WithParseError;
 
@@ -16,9 +17,8 @@ impl<'a> Display for BinaryError {
     }
 }
 
-
 /// Blanket trait for traits required by the lexer
-pub trait BinaryInput<'a>: Clone
+pub trait ByteStream<'a>: Clone
     + PartialEq
     + Slice<RangeFrom<usize>>
     + Slice<Range<usize>>
@@ -28,10 +28,10 @@ pub trait BinaryInput<'a>: Clone
     + InputTakeAtPosition
     + InputTake
     + Offset
-    + WithParseError
+    + WithParseError<ErrorKind>
     + AsBytes
     + Compare<&'a[u8]>
-    + std::fmt::Debug
+    + fmt::Debug
 {
     type InputIterItem;
     type InputTakeAtPositionItem;

@@ -83,8 +83,6 @@ pub enum IntVariant<I> {
     HexNum(NumParts<I>),
 }
 
-
-
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct NumParts<I> {
     pub p: Vec<I>,
@@ -93,7 +91,7 @@ pub struct NumParts<I> {
 }
 
 /// Blanket trait for traits required by the lexer
-pub trait LexerInput<'a>: Clone
+pub trait CharStream<'a>: Clone
     + PartialEq
     + Slice<RangeFrom<usize>>
     + Slice<Range<usize>>
@@ -104,14 +102,14 @@ pub trait LexerInput<'a>: Clone
     + InputTake
     + Offset
     + Compare<&'static str>
-    + WithParseError
-    + std::fmt::Debug
+    + WithParseError<ErrorKind>
+    + fmt::Debug
     + AsStr<'a> {
     type InputIterItem;
     type InputTakeAtPositionItem;
 }
 
-impl<'a, I> LexerInput<'a> for I
+impl<'a, I> CharStream<'a> for I
     where
         I : Clone
         + PartialEq
@@ -125,7 +123,7 @@ impl<'a, I> LexerInput<'a> for I
         + Offset
         + std::fmt::Debug
         + Compare<&'static str>
-        + WithParseError
+        + WithParseError<ErrorKind>
         + AsStr<'a>,
         <I as InputIter>::Item: NomAsChar + AsChar,
         <I as InputTakeAtPosition>::Item: NomAsChar + AsChar,
@@ -135,7 +133,7 @@ impl<'a, I> LexerInput<'a> for I
 }
 
 #[inline]
-pub fn token<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Token<I>, I::Error> {
+pub fn token<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Token<I>, I::Error> {
     alt((
         token_like(no_junk(string), |i, _| Token::String(i)),
         token_like(no_junk(num), |i, n| Token::Num(i, n)),
@@ -147,7 +145,7 @@ pub fn token<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Token<I>, I::Error>
 }
 
 #[inline]
-fn no_junk<'a, I: 'a + LexerInput<'a>, F, O>(parser: F) -> impl Fn(I) -> IResult<I, O, I::Error>
+fn no_junk<'a, I: 'a + CharStream<'a>, F, O>(parser: F) -> impl Fn(I) -> IResult<I, O, I::Error>
 where
     F: Fn(I) -> IResult<I, O, I::Error>
 {
@@ -157,7 +155,7 @@ where
 }
 
 #[inline]
-fn token_like<'a, I: 'a + LexerInput<'a>, F, G, O>(parser: F, variant: G) -> impl Fn(I) -> IResult<I, Token<I>, I::Error>
+fn token_like<'a, I: 'a + CharStream<'a>, F, G, O>(parser: F, variant: G) -> impl Fn(I) -> IResult<I, Token<I>, I::Error>
     where
         F: Fn(I) -> IResult<I, O, I::Error>,
         G: Fn(I, O) -> Token<I>,
@@ -172,7 +170,7 @@ fn token_like<'a, I: 'a + LexerInput<'a>, F, G, O>(parser: F, variant: G) -> imp
 }
 
 #[inline]
-pub fn string<'a, I: 'a + LexerInput<'a>>(input: I) -> IResult<I, (), I::Error> {
+pub fn string<'a, I: 'a + CharStream<'a>>(input: I) -> IResult<I, (), I::Error> {
     let (i, _) = char('\"')(input)?;
     let mut loop_i = i;
     loop {
@@ -186,7 +184,7 @@ pub fn string<'a, I: 'a + LexerInput<'a>>(input: I) -> IResult<I, (), I::Error> 
 }
 
 #[inline]
-pub fn num<'a, I: 'a + LexerInput<'a>>(input: I) -> IResult<I, Num<I>, I::Error> {
+pub fn num<'a, I: 'a + CharStream<'a>>(input: I) -> IResult<I, Num<I>, I::Error> {
     map(pair(sign,
              alt((
                  map(hex_num, |n| NumVariant::HexNum(n)),
@@ -198,12 +196,12 @@ pub fn num<'a, I: 'a + LexerInput<'a>>(input: I) -> IResult<I, Num<I>, I::Error>
 }
 
 #[inline]
-pub fn id<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, I, I::Error> {
+pub fn id<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, I, I::Error> {
     preceded(char('$'), idchar)(i)
 }
 
 #[inline]
-pub fn keyword<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Keyword, I::Error> {
+pub fn keyword<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Keyword, I::Error> {
     let (_, c) = anychar(i.clone())?;
 
     if !c.is_kw_prefix() {
@@ -221,12 +219,12 @@ pub fn keyword<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Keyword, I::Error
 }
 
 #[inline]
-fn sign<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Option<char>, I::Error> {
+fn sign<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Option<char>, I::Error> {
     opt(alt((char('+'), char('-'))))(i)
 }
 
 #[inline]
-pub fn hex_num<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, NumParts<I>, I::Error> {
+pub fn hex_num<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, NumParts<I>, I::Error> {
     map(preceded(tag("0x"), tuple((
         hex_num_digits,
         opt(preceded(char('.'), opt(hex_num_digits))),
@@ -235,12 +233,12 @@ pub fn hex_num<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, NumParts<I>, I::E
 }
 
 #[inline]
-pub fn hex_num_digits<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Vec<I>, I::Error> {
+pub fn hex_num_digits<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Vec<I>, I::Error> {
     separated_nonempty_list(char('_'), hex_digit1)(i)
 }
 
 #[inline]
-pub fn dec_num<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, NumParts<I>, I::Error> {
+pub fn dec_num<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, NumParts<I>, I::Error> {
     map(tuple((
         dec_num_digits,
         opt(preceded(char('.'), opt(dec_num_digits))),
@@ -249,17 +247,17 @@ pub fn dec_num<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, NumParts<I>, I::E
 }
 
 #[inline]
-pub fn dec_num_digits<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, Vec<I>, I::Error> {
+pub fn dec_num_digits<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, Vec<I>, I::Error> {
     separated_nonempty_list(char('_'), digit1)(i)
 }
 
 #[inline]
-pub fn linecomment<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, (), I::Error> {
+pub fn linecomment<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, (), I::Error> {
     value((), preceded(tag(";;"), not_line_ending))(i)
 }
 
 #[inline]
-pub fn blockcomment<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, (), I::Error> {
+pub fn blockcomment<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, (), I::Error> {
     let (mut mut_i, _) = tag("(;")(i)?;
 
     let mut lvl = 1u32;
@@ -292,7 +290,7 @@ pub fn blockcomment<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, (), I::Error
 }
 
 #[inline]
-pub fn ws<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, (), I::Error> {
+pub fn ws<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, (), I::Error> {
     alt((value((), char('\t')),
          value((), char('\r')),
          value((), char('\n')),
@@ -304,7 +302,7 @@ pub fn ws<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, (), I::Error> {
 
 
 #[inline]
-fn idchar<'a, I: 'a + LexerInput<'a>>(i: I) -> IResult<I, I, I::Error> {
+fn idchar<'a, I: 'a + CharStream<'a>>(i: I) -> IResult<I, I, I::Error> {
     let (i, res) = take_while1(AsChar::is_idchar)(i)?;
     Ok((i, res))
 }
